@@ -256,6 +256,16 @@
             perspective: 500px;
             animation: watcherDrift 60s ease-in-out infinite;
         }
+        .watcher-aura {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(109, 74, 255, 0.45) 0%, rgba(109, 74, 255, 0.2) 40%, rgba(109, 74, 255, 0) 72%);
+            animation: watcherAuraPulse 20s ease-in-out infinite;
+        }
         .watcher-eye {
             position: absolute;
             top: 0;
@@ -336,12 +346,26 @@
             50% { opacity: 1; transform: scale(1.15); }
         }
         @keyframes watcherDrift {
-            0%   { transform: translate(-50%, -50%) translate(-30vw, -30vh); }
-            20%  { transform: translate(-50%, -50%) translate(25vw, -20vh); }
-            40%  { transform: translate(-50%, -50%) translate(30vw, 25vh); }
-            60%  { transform: translate(-50%, -50%) translate(-20vw, 30vh); }
-            80%  { transform: translate(-50%, -50%) translate(-35vw, 5vh); }
-            100% { transform: translate(-50%, -50%) translate(-30vw, -30vh); }
+            0%   { transform: translate(-50%, -50%) translate(-15vw, 30vh); }
+            12%  { transform: translate(-50%, -50%) translate(20vw, 33vh); }
+            24%  { transform: translate(-50%, -50%) translate(30vw, 28vh); }
+            36%  { transform: translate(-50%, -50%) translate(0vw, 32vh); }
+            48%  { transform: translate(-50%, -50%) translate(-28vw, 27vh); }
+            58%  { transform: translate(-50%, -50%) translate(-10vw, 10vh); }
+            66%  { transform: translate(-50%, -50%) translate(10vw, -28vh); }
+            74%  { transform: translate(-50%, -50%) translate(-15vw, -30vh); }
+            82%  { transform: translate(-50%, -50%) translate(5vw, -15vh); }
+            92%  { transform: translate(-50%, -50%) translate(-20vw, 25vh); }
+            100% { transform: translate(-50%, -50%) translate(-15vw, 30vh); }
+        }
+        @keyframes watcherAuraPulse {
+            0%   { opacity: 0.25; transform: translate(-50%, -50%) scale(0.9); }
+            15%  { opacity: 0.45; transform: translate(-50%, -50%) scale(1.05); }
+            30%  { opacity: 0.3;  transform: translate(-50%, -50%) scale(0.95); }
+            50%  { opacity: 0.55; transform: translate(-50%, -50%) scale(1.15); }
+            68%  { opacity: 0.35; transform: translate(-50%, -50%) scale(1.0); }
+            85%  { opacity: 0.5;  transform: translate(-50%, -50%) scale(1.08); }
+            100% { opacity: 0.25; transform: translate(-50%, -50%) scale(0.9); }
         }
     </style>
 </head>
@@ -422,7 +446,7 @@
             <div class="card-title">Known Devices</div>
             <table id="knownTable" class="mt-2">
                 <thead>
-                    <tr><th>IP Address</th><th>Hostname</th><th>First Seen</th><th>Last Seen</th></tr>
+                    <tr><th>IP Address</th><th>MAC Address</th><th>Hostname</th><th>Threat Status</th><th>First Seen</th><th>Last Seen</th></tr>
                 </thead>
                 <tbody id="knownBody"></tbody>
             </table>
@@ -649,9 +673,9 @@
         <div class="card">
             <div class="card-title">Top Talkers (Most Connections)</div>
             <table id="talkersTable" class="mt-1">
-                <thead><tr><th>Remote IP</th><th>Connections</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Remote IP</th><th>MAC Address</th><th>Device Name</th><th>Connections</th><th>Actions</th></tr></thead>
                 <tbody id="talkersBody">
-                    <tr><td colspan="3" class="text-muted">No data yet</td></tr>
+                    <tr><td colspan="5" class="text-muted">No data yet</td></tr>
                 </tbody>
             </table>
         </div>
@@ -673,10 +697,10 @@
             </div>
             <table id="connectionsTable" class="mt-1">
                 <thead>
-                    <tr><th>Process</th><th>Local Addr</th><th>Remote Addr</th><th>Status</th><th>PID</th></tr>
+                    <tr><th>Process</th><th>Local Addr</th><th>Remote Addr</th><th>MAC Address</th><th>Device Name</th><th>Status</th><th>PID</th></tr>
                 </thead>
                 <tbody id="connectionsBody">
-                    <tr><td colspan="5" class="text-muted">No data yet</td></tr>
+                    <tr><td colspan="7" class="text-muted">No data yet</td></tr>
                 </tbody>
             </table>
         </div>
@@ -1003,13 +1027,28 @@ async function fetchLiveScan() {
     }
 }
 
+function renderThreatBadge(classification, threatScore) {
+    if (!classification) return '<span class="text-muted">Not investigated</span>';
+    const colorMap = {
+        malicious: 'badge-red',
+        suspicious: 'badge-yellow',
+        clean: 'badge-green',
+        identified: 'badge-gray',
+        located: 'badge-gray',
+        unknown: 'badge-gray',
+    };
+    const cls = colorMap[classification] || 'badge-gray';
+    const scoreText = (threatScore !== null && threatScore !== undefined) ? ` (${threatScore})` : '';
+    return `<span class="badge ${cls}">${classification.toUpperCase()}${scoreText}</span>`;
+}
+
 async function fetchKnownDevices() {
     try {
         const res = await fetch('/api/lan/known');
         const data = await res.json();
         const tbody = document.getElementById('knownBody');
         if (!data.devices.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No known devices yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No known devices yet</td></tr>';
             return;
         }
         tbody.innerHTML = '';
@@ -1017,7 +1056,9 @@ async function fetchKnownDevices() {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${d.ip}</td>
+                <td>${d.mac || 'N/A'}</td>
                 <td>${d.hostname || 'N/A'}</td>
+                <td>${renderThreatBadge(d.classification, d.threat_score)}</td>
                 <td>${new Date(d.first_seen).toLocaleString()}</td>
                 <td>${new Date(d.last_seen).toLocaleString()}</td>
             `;
@@ -1092,6 +1133,14 @@ async function diagnose(ip, mode) {
 // ============================================================================
 // IP INTELLIGENCE
 // ============================================================================
+function renderKnownDeviceNote(known) {
+    if (!known) return '';
+    return `<div class="card mb-2" style="border-color:#6d4aff;">
+        <div class="text-sm">📡 <strong>This is a known device on your LAN.</strong>
+        MAC: ${known.mac || 'N/A'} | Hostname: ${known.hostname || 'N/A'}</div>
+    </div>`;
+}
+
 async function ipLookup() {
     const target = document.getElementById('ipTarget').value.trim();
     if (!target) return;
@@ -1102,13 +1151,15 @@ async function ipLookup() {
         const data = await res.json();
 
         if (data.error) {
-            document.getElementById('ipResultContent').innerHTML = `<span class="text-danger">${data.error}</span>`;
+            document.getElementById('ipResultContent').innerHTML =
+                renderKnownDeviceNote(data.known_device) + `<span class="text-danger">${data.error}</span>`;
             return;
         }
 
         if (data.domain) {
             // Domain investigation
-            let html = `<div class="status-grid">
+            let html = renderKnownDeviceNote(data.known_device);
+            html += `<div class="status-grid">
                 <div class="status-item"><div class="status-label">Domain</div><div class="status-value">${data.domain}</div></div>
                 <div class="status-item"><div class="status-label">Resolved IP</div><div class="status-value">${data.resolved_ip}</div></div>
             </div>`;
@@ -1148,7 +1199,8 @@ async function ipLookup() {
             document.getElementById('ipResultContent').innerHTML = html;
         } else {
             // Direct IP investigation
-            const html = `
+            let html = renderKnownDeviceNote(data.known_device);
+            html += `
                 <div class="status-grid">
                     <div class="status-item"><div class="status-label">IP</div><div class="status-value">${data.ip}</div></div>
                     <div class="status-item"><div class="status-label">Country</div><div class="status-value">${data.country}</div></div>
@@ -1499,13 +1551,41 @@ function startTrafficMonitor() {
     fetchTrafficLive();
     fetchConnections();
     fetchTrafficHistory();
+    fetchWifiNetworks();
     trafficTimer = setInterval(() => {
         if (getCurrentTab() === 'traffic' && trafficEnabled) {
             fetchTrafficLive();
             fetchConnections();
             fetchTrafficHistory();
+            fetchWifiNetworks();
         }
     }, 60000); // 1 minute refresh
+}
+
+async function fetchWifiNetworks() {
+    try {
+        const res = await fetch('/api/traffic/wifi');
+        const data = await res.json();
+        const tbody = document.getElementById('wifiBody');
+        const statusEl = document.getElementById('wifiStatus');
+        if (!data.networks.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No networks found</td></tr>';
+            statusEl.textContent = 'No nearby WiFi networks detected (requires a supported wireless scanning tool on this OS).';
+            return;
+        }
+        statusEl.textContent = `${data.count} network(s) found`;
+        tbody.innerHTML = data.networks.map(n => `
+            <tr>
+                <td>${n.ssid}</td>
+                <td>${n.bssid}</td>
+                <td>${n.signal}</td>
+                <td>${n.channel}</td>
+                <td>${n.security}</td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        document.getElementById('wifiStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
 }
 
 async function fetchTrafficLive() {
@@ -1538,7 +1618,7 @@ async function fetchTrafficLive() {
         renderConnStates(data.conn_states || {});
 
         // Render top talkers
-        renderTalkers(data.top_talkers || {});
+        renderTalkers(data.top_talkers || []);
     } catch (e) {
         document.getElementById('trafficStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
     }
@@ -1561,7 +1641,7 @@ async function fetchConnections() {
         document.getElementById('connCountLabel').textContent = `(${data.count})`;
     } catch (e) {
         document.getElementById('connectionsBody').innerHTML =
-            `<tr><td colspan="5" class="text-danger">Error: ${e}</td></tr>`;
+            `<tr><td colspan="7" class="text-danger">Error: ${e}</td></tr>`;
     }
 }
 
@@ -1621,16 +1701,18 @@ function renderConnStates(states) {
 
 function renderTalkers(talkers) {
     const tbody = document.getElementById('talkersBody');
-    if (!Object.keys(talkers).length) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data yet</td></tr>';
+    if (!talkers.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No data yet</td></tr>';
         return;
     }
-    tbody.innerHTML = Object.entries(talkers).map(([ip, count]) => `
+    tbody.innerHTML = talkers.map(t => `
         <tr>
-            <td>${ip}</td>
-            <td><span class="badge badge-purple">${count}</span></td>
+            <td>${t.ip}</td>
+            <td>${t.mac || 'N/A'}</td>
+            <td>${t.device_name || 'N/A'}</td>
+            <td><span class="badge badge-purple">${t.count}</span></td>
             <td>
-                <button onclick="investigateIP('${ip}')" class="text-sm">🔍 Investigate</button>
+                <button onclick="investigateIP('${t.ip}')" class="text-sm">🔍 Investigate</button>
             </td>
         </tr>
     `).join('');
@@ -1639,7 +1721,7 @@ function renderTalkers(talkers) {
 function renderConnections(conns) {
     const tbody = document.getElementById('connectionsBody');
     if (!conns.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No active connections</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-muted">No active connections</td></tr>';
         return;
     }
     tbody.innerHTML = conns.map(c => {
@@ -1650,6 +1732,8 @@ function renderConnections(conns) {
                 <td class="text-sm">${c.process || 'N/A'}</td>
                 <td class="text-sm">${c.laddr || 'N/A'}</td>
                 <td class="text-sm">${c.raddr || 'N/A'}</td>
+                <td class="text-sm">${c.mac || 'N/A'}</td>
+                <td class="text-sm">${c.device_name || 'N/A'}</td>
                 <td class="text-sm ${statusClass}">${c.status}</td>
                 <td class="text-sm">${c.pid || 'N/A'}</td>
             </tr>
@@ -1663,7 +1747,9 @@ function filterConnections() {
         (c.laddr && c.laddr.toLowerCase().includes(filter)) ||
         (c.raddr && c.raddr.toLowerCase().includes(filter)) ||
         (c.process && c.process.toLowerCase().includes(filter)) ||
-        (c.status && c.status.toLowerCase().includes(filter))
+        (c.status && c.status.toLowerCase().includes(filter)) ||
+        (c.mac && c.mac.toLowerCase().includes(filter)) ||
+        (c.device_name && c.device_name.toLowerCase().includes(filter))
     );
     renderConnections(filtered);
 }
@@ -1951,6 +2037,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 <!-- ==================== AMBIENT WATCHER (decorative, all tabs) ==================== -->
 <div class="watcher-scene" aria-hidden="true">
+    <div class="watcher-aura"></div>
     <div class="watcher-eye">
         <div class="watcher-eye-white">
             <div class="watcher-eye-iris">

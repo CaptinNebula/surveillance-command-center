@@ -1,0 +1,14 @@
+[Unit]
+Description=Surveillance Command Center
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/surveillance-command-center
+ExecStart=/usr/bin/python3 /opt/surveillance-command-center/app.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

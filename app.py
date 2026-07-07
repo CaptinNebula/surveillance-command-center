@@ -19,17 +19,35 @@ from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
+from dotenv import load_dotenv
 from flask import Flask, render_template, jsonify, request, Response, redirect, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+load_dotenv()
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-DASHBOARD_USER = os.getenv("DASHBOARD_USER", "admin1")
-DASHBOARD_PASS = os.getenv("DASHBOARD_PASS", "Admin123@")
+DASHBOARD_USER = os.getenv("DASHBOARD_USER")
+DASHBOARD_PASS = os.getenv("DASHBOARD_PASS")
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+_INSECURE_DEFAULTS = {"admin1", "Admin123@", "change-this-to-a-random-string"}
+
+if not DASHBOARD_USER or not DASHBOARD_PASS or not SECRET_KEY:
+    raise SystemExit(
+        "FATAL: DASHBOARD_USER, DASHBOARD_PASS, and SECRET_KEY must all be set "
+        "(e.g. via a .env file — see .env.example). Refusing to start with no credentials configured."
+    )
+if DASHBOARD_USER in _INSECURE_DEFAULTS or DASHBOARD_PASS in _INSECURE_DEFAULTS or SECRET_KEY in _INSECURE_DEFAULTS:
+    raise SystemExit(
+        "FATAL: DASHBOARD_USER/DASHBOARD_PASS/SECRET_KEY must not use the old insecure default values."
+    )
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "command_center.db")
 LAN_SCAN_TIMEOUT = float(os.getenv("SCAN_TIMEOUT", "0.3"))
 SCAN_WORKERS = int(os.getenv("SCAN_WORKERS", "40"))
-NMAP_TIMEOUT = int(os.getenv("NMAP_TIMEOUT", "60"))
+NMAP_TIMEOUT = int(os.getenv("NMAP_TIMEOUT", "120"))
 
 CAMERA_PORTS = [554, 8554, 80, 8080, 8000, 8060]
 COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 554, 587,
@@ -54,9 +72,14 @@ STREAM_TEMPLATES = [
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-this-to-a-random-string")
+app.config["SECRET_KEY"] = SECRET_KEY
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 _active_feeds = {}
+
+_failed_logins = {}
+_LOGIN_LOCKOUT_THRESHOLD = 5
+_LOGIN_LOCKOUT_WINDOW = 300  # 5 minutes
 
 _live_lan_state = {"scanning": False, "last_scan": None, "devices": [], "interval": 30}
 _live_lan_lock = threading.Lock()
@@ -311,6 +334,8 @@ def traffic_monitor_loop():
             log_activity("Traffic Monitor", "snapshot",
                          f"↑{format_bytes(total_sent)} ↓{format_bytes(total_recv)} | {len(connections)} conns",
                          json.dumps({"protocols": protocols, "talkers": top_talkers}))
+
+            trim_activity_log()
 
         except Exception as e:
             log_activity("Traffic Monitor", "error", str(e), "")
@@ -576,8 +601,8 @@ def osint_worker_loop():
             # Store in database
             db = get_db()
             db.execute(
-                "INSERT OR REPLACE INTO ip_reports (ip, timestamp, threat_score, country, asn, raw_data) VALUES (?, ?, ?, ?, ?, ?)",
-                (target, result["timestamp"], threat or 0, country, result.get("asn", ""), json.dumps(result)[:5000])
+                "INSERT OR REPLACE INTO ip_reports (ip, timestamp, threat_score, country, asn, raw_data, classification) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (target, result["timestamp"], threat or 0, country, result.get("asn", ""), json.dumps(result)[:5000], classification)
             )
             db.commit()
             db.close()
@@ -659,7 +684,15 @@ def init_db():
         );
     """)
     db.commit()
+    try:
+        db.execute("ALTER TABLE ip_reports ADD COLUMN classification TEXT")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     db.close()
+
+
+init_db()
 
 
 def log_activity(action, target="", result="", details=""):
@@ -672,6 +705,16 @@ def log_activity(action, target="", result="", details=""):
     db.close()
 
 
+def trim_activity_log(max_rows=5000):
+    db = get_db()
+    db.execute(
+        "DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY id DESC LIMIT ?)",
+        (max_rows,),
+    )
+    db.commit()
+    db.close()
+
+
 # ============================================================================
 # AUTHENTICATION
 # ============================================================================
@@ -679,12 +722,21 @@ def requires_auth(f):
     import base64
     @wraps(f)
     def decorated(*args, **kwargs):
+        ip = request.remote_addr
+        now = time.time()
+        attempts = [t for t in _failed_logins.get(ip, []) if now - t < _LOGIN_LOCKOUT_WINDOW]
+        if len(attempts) >= _LOGIN_LOCKOUT_THRESHOLD:
+            return Response("Too many failed login attempts. Try again later.", 429)
+
         auth = request.authorization
         if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
+            attempts.append(now)
+            _failed_logins[ip] = attempts
             return Response(
                 "Authentication required", 401,
                 {"WWW-Authenticate": "Basic realm='Command Center'"}
             )
+        _failed_logins.pop(ip, None)
         return f(*args, **kwargs)
     return decorated
 
@@ -729,6 +781,48 @@ def get_hostname(ip):
         return None
 
 
+_MAC_RE = re.compile(r"\b([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})\b")
+
+
+def get_mac_via_arp(ip):
+    """Look up a device's MAC address from the local neighbor/ARP cache.
+
+    Tries Linux's `ip neighbor show` first, then falls back to `arp -n`
+    (works on both macOS/BSD and Linux systems with net-tools installed).
+    Both commands scope their output to the single queried IP, so any
+    MAC-shaped substring found is unambiguously the answer.
+    """
+    for cmd in (["ip", "neighbor", "show", ip], ["arp", "-n", ip]):
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            match = _MAC_RE.search(result.stdout)
+            if match:
+                return match.group(1)
+        except Exception:
+            continue
+    return None
+
+
+def get_known_devices_map():
+    """Build an ip -> {mac, hostname} lookup from the known_devices table."""
+    db = get_db()
+    rows = db.execute("SELECT ip, mac, hostname FROM known_devices").fetchall()
+    db.close()
+    return {r["ip"]: {"mac": r["mac"] or "", "hostname": r["hostname"] or ""} for r in rows}
+
+
+def get_latest_ip_reports_map():
+    """Latest ip_reports row per IP, as {ip: {classification, threat_score, country, asn, timestamp}}."""
+    db = get_db()
+    rows = db.execute("""
+        SELECT ip, threat_score, classification, country, asn, timestamp
+        FROM ip_reports
+        WHERE id IN (SELECT MAX(id) FROM ip_reports GROUP BY ip)
+    """).fetchall()
+    db.close()
+    return {r["ip"]: dict(r) for r in rows}
+
+
 def default_iface():
     try:
         result = subprocess.run(
@@ -771,44 +865,60 @@ def scan_lan():
     return found
 
 
+def record_devices_seen(devices, source="lan_scan_new_device"):
+    """Upsert LAN devices into known_devices and enqueue OSINT for newly-seen ones."""
+    now = datetime.now().isoformat()
+    db = get_db()
+    for d in devices:
+        hostname = get_hostname(d["ip"]) or ""
+        mac = d.get("mac") or get_mac_via_arp(d["ip"]) or ""
+        existing = db.execute(
+            "SELECT id FROM known_devices WHERE ip = ?", (d["ip"],)
+        ).fetchone()
+        if not existing:
+            log_activity("NEW DEVICE DETECTED", d["ip"], "Unknown device joined network", json.dumps(d))
+            if _osint_state["enabled"]:
+                enqueue_osint(d["ip"], source=source, target_type="ip")
+            db.execute(
+                "INSERT INTO known_devices (ip, mac, hostname, first_seen, last_seen, notes) VALUES (?, ?, ?, ?, ?, '')",
+                (d["ip"], mac, hostname, now, now),
+            )
+        else:
+            db.execute(
+                "UPDATE known_devices SET mac = CASE WHEN ? != '' THEN ? ELSE mac END, hostname = ?, last_seen = ? WHERE id = ?",
+                (mac, mac, hostname, now, existing["id"]),
+            )
+    db.commit()
+    db.close()
+
+
 def _update_live_lan_state(devices):
     now = datetime.now().isoformat()
     with _live_lan_lock:
         _live_lan_state["devices"] = devices
         _live_lan_state["last_scan"] = now
         _live_lan_state["scanning"] = False
-
-    db = get_db()
-    for d in devices:
-        hostname = get_hostname(d["ip"]) or ""
-        existing = db.execute(
-            "SELECT 1 FROM known_devices WHERE ip = ? AND mac = ''", (d["ip"],)
-        ).fetchone()
-        if not existing:
-            log_activity("NEW DEVICE DETECTED", d["ip"], "Unknown device joined network", json.dumps(d))
-            if _osint_state["enabled"]:
-                enqueue_osint(d["ip"], source="lan_scan_new_device", target_type="ip")
-        db.execute(
-            """
-            INSERT INTO known_devices (ip, mac, hostname, first_seen, last_seen, notes)
-            VALUES (?, '', ?, ?, ?, '')
-            ON CONFLICT(ip, mac) DO UPDATE SET last_seen=excluded.last_seen, hostname=excluded.hostname
-            """,
-            (d["ip"], hostname, now, now),
-        )
-    db.commit()
-    db.close()
+    record_devices_seen(devices)
 
 
 def _live_lan_worker():
     while True:
         with _live_lan_lock:
             _live_lan_state["scanning"] = True
-        devices = scan_lan()
-        _update_live_lan_state(devices)
+        try:
+            devices = scan_lan()
+            _update_live_lan_state(devices)
+        except Exception as e:
+            log_activity("LAN Monitor", "error", str(e), "")
+            with _live_lan_lock:
+                _live_lan_state["scanning"] = False
         with _live_lan_lock:
             interval = _live_lan_state["interval"]
         time.sleep(interval)
+
+
+_live_lan_thread = threading.Thread(target=_live_lan_worker, daemon=True)
+_live_lan_thread.start()
 
 
 def arp_scan():
@@ -845,7 +955,8 @@ def arp_scan():
     devices = []
     for host in hosts:
         if scan_port(str(host), 80, timeout=0.1) or scan_port(str(host), 443, timeout=0.1):
-            devices.append({"ip": str(host), "mac": "", "vendor": ""})
+            mac = get_mac_via_arp(str(host)) or ""
+            devices.append({"ip": str(host), "mac": mac, "vendor": ""})
     log_activity("Socket Scan", str(subnet), f"Found {len(devices)} devices", json.dumps(devices))
     return devices
 
@@ -1039,7 +1150,7 @@ def shodan_lookup(ip):
 # ============================================================================
 def run_nmap(ip, ports=None):
     port_arg = ",".join(str(p) for p in ports) if ports else ""
-    cmd = ["nmap", "-sV", "-sC"]
+    cmd = ["nmap", "-sV", "--version-intensity", "2", "-sC", "--script-timeout", "10s", "-T4", "-Pn", "--host-timeout", "90s"]
     if port_arg:
         cmd.extend(["-p", port_arg])
     cmd.append(ip)
@@ -1260,7 +1371,15 @@ def api_lan_known():
     db = get_db()
     rows = db.execute("SELECT * FROM known_devices ORDER BY last_seen DESC").fetchall()
     db.close()
-    return jsonify({"devices": [dict(r) for r in rows]})
+    reports = get_latest_ip_reports_map()
+    devices = []
+    for r in rows:
+        d = dict(r)
+        report = reports.get(d["ip"])
+        d["classification"] = report["classification"] if report else None
+        d["threat_score"] = report["threat_score"] if report else None
+        devices.append(d)
+    return jsonify({"devices": devices})
 
 
 @app.route("/api/lan/interval", methods=["POST"])
@@ -1280,6 +1399,7 @@ def api_lan_interval():
 @requires_auth
 def api_lan_arp():
     devices = arp_scan()
+    record_devices_seen(devices, source="arp_scan_new_device")
     return jsonify({"devices": devices, "count": len(devices)})
 
 
@@ -1309,8 +1429,11 @@ def api_ip_lookup(target):
     except ValueError:
         is_ip = False
 
+    devices = get_known_devices_map()
+
     if is_ip:
         result = ip_lookup(target)
+        result["known_device"] = devices.get(target)
         return jsonify(result)
     else:
         # Domain — resolve to IP first
@@ -1327,6 +1450,7 @@ def api_ip_lookup(target):
                 "dns": dns_result,
                 "whois": whois_result,
                 "subdomains": subs,
+                "known_device": devices.get(resolved),
             })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -1389,9 +1513,16 @@ def api_diagnose(ip):
             "warning": "ARP spoofing intercepts traffic. Unauthorized use is illegal.",
         })
 
+    known_ports = None
+    for d in _live_lan_state["devices"]:
+        if d["ip"] == ip:
+            known_ports = d["ports"]
+            break
+    scan_ports = known_ports if known_ports else COMMON_PORTS
+
     result = {
         "ip": ip,
-        "nmap": run_nmap(ip),
+        "nmap": run_nmap(ip, ports=scan_ports),
         "bettercap": run_bettercap(ip, mode=mode),
     }
     return jsonify(result)
@@ -1447,7 +1578,18 @@ def api_traffic_live():
     snap = _traffic_state.get("current")
     if not snap:
         return jsonify({"status": "waiting", "message": "First snapshot pending...", "interval": _traffic_state["interval"]})
-    return jsonify(snap)
+    devices = get_known_devices_map()
+    result = dict(snap)
+    result["top_talkers"] = [
+        {
+            "ip": ip,
+            "count": count,
+            "mac": devices.get(ip, {}).get("mac", ""),
+            "device_name": devices.get(ip, {}).get("hostname", ""),
+        }
+        for ip, count in snap.get("top_talkers", {}).items()
+    ]
+    return jsonify(result)
 
 
 @app.route("/api/traffic/history")
@@ -1471,7 +1613,13 @@ def api_traffic_history():
 def api_traffic_connections():
     limit = request.args.get("limit", 50, type=int)
     conns = _traffic_state.get("connections", [])[:limit]
-    return jsonify({"connections": conns, "count": len(conns)})
+    devices = get_known_devices_map()
+    enriched = []
+    for c in conns:
+        ip = c["raddr"].rsplit(":", 1)[0] if ":" in c["raddr"] else ""
+        info = devices.get(ip, {})
+        enriched.append({**c, "mac": info.get("mac", ""), "device_name": info.get("hostname", "")})
+    return jsonify({"connections": enriched, "count": len(enriched)})
 
 
 @app.route("/api/traffic/wifi")
@@ -1636,8 +1784,6 @@ def api_case_entries_add(case_id):
 # MAIN
 # ============================================================================
 if __name__ == "__main__":
-    init_db()
-    threading.Thread(target=_live_lan_worker, daemon=True).start()
     print("=" * 60)
     print("  SURVEILLANCE COMMAND CENTER")
     print(f"  Login: {DASHBOARD_USER} / {DASHBOARD_PASS}")
