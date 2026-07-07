@@ -1,0 +1,4 @@
+command_center.db
+__pycache__/
+*.pyc
+.env

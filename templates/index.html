@@ -1,0 +1,1971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surveillance Command Center</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+
+        /* HEADER */
+        .header {
+            background: linear-gradient(135deg, #0d0d0d 0%, #1a0a2e 100%);
+            border-bottom: 2px solid #6d4aff;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 {
+            font-size: 1.4rem;
+            color: #6d4aff;
+            text-shadow: 0 0 10px rgba(109, 74, 255, 0.5);
+            letter-spacing: 2px;
+        }
+        .header-info {
+            font-size: 0.75rem;
+            color: #888;
+            text-align: right;
+        }
+        .header-info span { color: #6d4aff; }
+
+        /* NAV */
+        .nav {
+            display: flex;
+            background: #111;
+            border-bottom: 1px solid #222;
+            padding: 0 2rem;
+            overflow-x: auto;
+        }
+        .nav-tab {
+            padding: 0.8rem 1.5rem;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        .nav-tab:hover { color: #aaa; background: #1a1a1a; }
+        .nav-tab.active {
+            color: #6d4aff;
+            border-bottom: 2px solid #6d4aff;
+            background: #141414;
+        }
+
+        /* MAIN */
+        .main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* CARDS */
+        .card {
+            background: #121212;
+            border: 1px solid #222;
+            border-radius: 6px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .card-title {
+            font-size: 0.9rem;
+            color: #6d4aff;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* FORMS */
+        input, textarea, select {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        input:focus, textarea:focus { border-color: #6d4aff; }
+        input[type="text"] { width: 300px; }
+        textarea { width: 100%; min-height: 80px; resize: vertical; }
+
+        button {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 0.5rem 1.2rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        button:hover { background: #2a2a2a; border-color: #6d4aff; color: #6d4aff; }
+        button.active-btn { background: #6d4aff; color: #fff; border-color: #6d4aff; }
+        button.danger { border-color: #f44; color: #f44; }
+        button.danger:hover { background: #f44; color: #fff; }
+
+        /* STATUS BADGES */
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        .badge-green { background: #0a3; color: #0f0; }
+        .badge-red { background: #400; color: #f44; }
+        .badge-yellow { background: #430; color: #ff0; }
+        .badge-gray { background: #222; color: #888; }
+        .badge-purple { background: #3a1a5c; color: #b088ff; }
+
+        /* TABLE */
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid #1a1a1a;
+            font-size: 0.82rem;
+        }
+        th { color: #6d4aff; font-weight: bold; font-size: 0.75rem; text-transform: uppercase; }
+        tr:hover { background: #141414; cursor: pointer; }
+
+        /* OUTPUT */
+        .output {
+            background: #000;
+            border: 1px solid #222;
+            border-radius: 4px;
+            padding: 1rem;
+            font-size: 0.78rem;
+            color: #0f0;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+        .output-text { color: #ccc; }
+        .output-warn { color: #f44; }
+        .output-info { color: #08f; }
+
+        /* CAMERA GRID */
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .camera-tile {
+            background: #0a0a0a;
+            border: 1px solid #222;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .camera-tile img { width: 100%; height: auto; display: block; }
+        .camera-tile-header {
+            padding: 0.5rem;
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            background: #111;
+            border-bottom: 1px solid #222;
+        }
+
+        /* LOADING */
+        .loader {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #333;
+            border-top-color: #6d4aff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* STATUS PANEL */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        .status-item {
+            background: #0a0a0a;
+            border: 1px solid #222;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        .status-label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
+        .status-value { font-size: 1rem; color: #6d4aff; margin-top: 0.3rem; }
+
+        /* CASE ENTRIES */
+        .case-entry {
+            background: #0a0a0a;
+            border-left: 3px solid #6d4aff;
+            padding: 0.75rem 1rem;
+            margin: 0.5rem 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .case-entry-meta {
+            font-size: 0.7rem;
+            color: #666;
+            margin-bottom: 0.3rem;
+        }
+        .case-entry-type {
+            display: inline-block;
+            background: #1a1a2e;
+            color: #6d4aff;
+            padding: 0.1rem 0.4rem;
+            border-radius: 2px;
+            font-size: 0.65rem;
+            margin-right: 0.4rem;
+        }
+
+        .flex-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+        .mt-3 { margin-top: 1.5rem; }
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+        .ml-2 { margin-left: 1rem; }
+        .text-sm { font-size: 0.78rem; }
+        .text-muted { color: #666; }
+        .text-danger { color: #f44; }
+        .text-success { color: #0f0; }
+        .hidden { display: none !important; }
+
+        /* ==================== AMBIENT WATCHER (decorative, all tabs) ==================== */
+        .watcher-scene {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 160px;
+            height: 190px;
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0.55;
+            perspective: 500px;
+            animation: watcherDrift 60s ease-in-out infinite;
+        }
+        .watcher-eye {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            animation: watcherFloat 4.5s ease-in-out infinite;
+        }
+        .watcher-eye-white {
+            width: 54px;
+            height: 28px;
+            background: radial-gradient(ellipse at center, #e8e0ff 0%, #b8a6ff 60%, #6d4aff 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 18px 4px rgba(109, 74, 255, 0.65);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .watcher-eye-iris {
+            width: 18px;
+            height: 18px;
+            background: #1a0a2e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 6px 1px rgba(157, 78, 221, 0.8);
+        }
+        .watcher-eye-pupil {
+            width: 8px;
+            height: 8px;
+            background: #9d4edd;
+            border-radius: 50%;
+            animation: watcherGlow 3s ease-in-out infinite;
+        }
+        .watcher-beam {
+            position: absolute;
+            top: 26px;
+            left: 50%;
+            width: 2px;
+            height: 90px;
+            transform: translateX(-50%);
+            background: linear-gradient(to bottom, rgba(157, 78, 221, 0.5), rgba(157, 78, 221, 0));
+        }
+        .watcher-pyramid {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            width: 100px;
+            height: 100px;
+            transform-style: preserve-3d;
+            animation: watcherSpin 20s linear infinite;
+        }
+        .watcher-face {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 0;
+            border-left: 50px solid transparent;
+            border-right: 50px solid transparent;
+            border-bottom: 100px solid rgba(109, 74, 255, 0.4);
+            transform-origin: 50% 100%;
+        }
+        .watcher-face-1 { transform: rotateY(0deg) rotateX(28deg); }
+        .watcher-face-2 { transform: rotateY(90deg) rotateX(28deg); }
+        .watcher-face-3 { transform: rotateY(180deg) rotateX(28deg); }
+        .watcher-face-4 { transform: rotateY(270deg) rotateX(28deg); }
+
+        @keyframes watcherSpin {
+            from { transform: translateX(-50%) rotateX(180deg) rotateY(0deg); }
+            to   { transform: translateX(-50%) rotateX(180deg) rotateY(360deg); }
+        }
+        @keyframes watcherFloat {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-8px); }
+        }
+        @keyframes watcherGlow {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.15); }
+        }
+        @keyframes watcherDrift {
+            0%   { transform: translate(-50%, -50%) translate(-30vw, -30vh); }
+            20%  { transform: translate(-50%, -50%) translate(25vw, -20vh); }
+            40%  { transform: translate(-50%, -50%) translate(30vw, 25vh); }
+            60%  { transform: translate(-50%, -50%) translate(-20vw, 30vh); }
+            80%  { transform: translate(-50%, -50%) translate(-35vw, 5vh); }
+            100% { transform: translate(-50%, -50%) translate(-30vw, -30vh); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <h1>📡 SURVEILLANCE COMMAND CENTER</h1>
+    <div class="header-info" id="headerInfo">
+        Loading...
+    </div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+    <div class="nav-tab active" data-tab="status">System Status</div>
+    <div class="nav-tab" data-tab="lan">LAN Monitor</div>
+    <div class="nav-tab" data-tab="ipintel">IP Intelligence</div>
+    <div class="nav-tab" data-tab="osint">OSINT Toolkit</div>
+    <div class="nav-tab" data-tab="camera">Camera Feeds</div>
+    <div class="nav-tab" data-tab="traffic">WiFi Traffic</div>
+    <div class="nav-tab" data-tab="cases">Case Manager</div>
+    <div class="nav-tab" data-tab="activity">Activity Log</div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+    <!-- ==================== SYSTEM STATUS ==================== -->
+    <div class="tab-content active" id="tab-status">
+        <div class="card">
+            <div class="card-title">System Environment</div>
+            <div id="statusContent"><span class="loader"></span> Loading system status...</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Quick Actions</div>
+            <div class="flex-row">
+                <button onclick="loadStatus()">Refresh Status</button>
+                <button onclick="switchTab('lan'); lanScan()">Scan Network</button>
+                <button onclick="switchTab('ipintel')">Investigate IP</button>
+                <button onclick="switchTab('osint')">OSINT Lookup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== LAN MONITOR ==================== -->
+    <div class="tab-content" id="tab-lan">
+        <div class="card">
+            <div class="card-title">Live LAN Monitor</div>
+            <div class="flex-row">
+                <button onclick="manualScan()">Scan Now</button>
+                <button onclick="toggleAutoScan()" id="autoScanBtn">Pause Auto-Scan</button>
+                <input type="number" id="scanInterval" placeholder="Interval (seconds)" min="10" value="30" style="width:140px">
+                <button onclick="updateInterval()">Set Interval</button>
+            </div>
+            <div id="liveStatus" class="mt-1 text-muted text-sm"></div>
+            <div id="liveCount" class="text-sm"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Network Discovery</div>
+            <div class="flex-row">
+                <button onclick="lanScan()" id="lanScanBtn">Scan LAN (Port Probe)</button>
+                <button onclick="lanArp()" id="lanArpBtn">ARP Scan</button>
+            </div>
+            <div id="lanStatus" class="mt-1 text-muted text-sm"></div>
+            <table id="lanTable" class="hidden mt-2">
+                <thead>
+                    <tr><th>IP Address</th><th>Open Ports</th><th>Status</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="lanBody"></tbody>
+            </table>
+        </div>
+        <div class="card hidden" id="lanDeviceCard">
+            <div class="card-title">Device Detail: <span id="lanDeviceIP"></span></div>
+            <div id="lanDeviceDetail"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Known Devices</div>
+            <table id="knownTable" class="mt-2">
+                <thead>
+                    <tr><th>IP Address</th><th>Hostname</th><th>First Seen</th><th>Last Seen</th></tr>
+                </thead>
+                <tbody id="knownBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==================== IP INTELLIGENCE ==================== -->
+    <div class="tab-content" id="tab-ipintel">
+        <div class="card">
+            <div class="card-title">IP / Domain Intelligence</div>
+            <div class="flex-row">
+                <input type="text" id="ipTarget" placeholder="IP address or domain (e.g. 8.8.8.8 or example.com)">
+                <button onclick="ipLookup()">Investigate</button>
+            </div>
+            <div class="text-sm text-muted mt-1">
+                Returns: geolocation, ASN, ISP, reverse DNS. For domains also resolves DNS, WHOIS, and subdomains.
+            </div>
+        </div>
+        <div class="card hidden" id="ipResultCard">
+            <div class="card-title">Intelligence Report</div>
+            <div id="ipResultContent"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">Additional Checks</div>
+            <div class="flex-row">
+                <input type="text" id="threatIP" placeholder="IP for threat check">
+                <button onclick="ipThreat()">Threat Score</button>
+                <button onclick="ipShodan()">Shodan Lookup</button>
+            </div>
+            <div class="text-sm text-muted mt-1">
+                Requires ABUSEIPDB_KEY and SHODAN_KEY environment variables.
+            </div>
+            <div id="threatResult" class="mt-2"></div>
+        </div>
+    </div>
+
+    <!-- ==================== OSINT TOOLKIT ==================== -->
+    <div class="tab-content" id="tab-osint">
+        <div class="card">
+            <div class="card-title">Subdomain Enumeration</div>
+            <div class="flex-row">
+                <input type="text" id="subDomain" placeholder="domain.com">
+                <button onclick="osintSubs()">Enumerate Subdomains</button>
+            </div>
+            <div class="text-sm text-muted mt-1">Uses crt.sh certificate transparency logs. No API key needed.</div>
+            <div id="subResult" class="mt-2"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">DNS Records</div>
+            <div class="flex-row">
+                <input type="text" id="dnsDomain" placeholder="domain.com">
+                <button onclick="osintDNS()">Query DNS</button>
+            </div>
+            <div id="dnsResult" class="mt-2"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">WHOIS / RDAP</div>
+            <div class="flex-row">
+                <input type="text" id="whoisDomain" placeholder="domain.com">
+                <button onclick="osintWhois()">WHOIS Lookup</button>
+            </div>
+            <div id="whoisResult" class="mt-2"></div>
+        </div>
+
+        <!-- Auto-OSINT Engine Status -->
+        <div class="card">
+            <div class="card-title">Automated OSINT Engine</div>
+            <div class="flex-row mb-2">
+                <span id="osintEngineStatus" class="text-sm text-muted">Initializing...</span>
+                <span id="osintQueueSize" class="text-sm text-muted ml-2"></span>
+            </div>
+            <div class="flex-row">
+                <button onclick="toggleOsintEngine()" id="osintToggleBtn">Pause Engine</button>
+                <button onclick="clearOsintResults()" class="danger">Clear Results</button>
+                <input type="text" id="manualOsintTarget" placeholder="Manually investigate IP or domain...">
+                <button onclick="manualEnqueue()">Investigate</button>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="card">
+            <div class="card-title">Investigation Statistics</div>
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-label">Total Processed</div>
+                    <div class="status-value" id="osintTotalProcessed">0</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">IPs Investigated</div>
+                    <div class="status-value" id="osintIpsDone">0</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Domains Investigated</div>
+                    <div class="status-value" id="osintDomainsDone">0</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Threats Found</div>
+                    <div class="status-value" id="osintThreatsFound">0</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Errors</div>
+                    <div class="status-value" id="osintErrors">0</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Currently Processing</div>
+                    <div class="status-value" id="osintCurrent">Idle</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="card">
+            <div class="card-title">Investigation Results</div>
+            <div class="flex-row mb-2">
+                <span class="text-sm text-muted">Filter:</span>
+                <button onclick="filterOsint('all')" id="osintFilterAll" class="active-btn">All</button>
+                <button onclick="filterOsint('malicious')" id="osintFilterMalicious" class="danger">Malicious</button>
+                <button onclick="filterOsint('suspicious')" id="osintFilterSuspicious">Suspicious</button>
+                <button onclick="filterOsint('clean')" id="osintFilterClean">Clean</button>
+                <button onclick="filterOsint('identified')" id="osintFilterIdentified">Identified</button>
+                <button onclick="filterOsint('located')" id="osintFilterLocated">Located</button>
+                <button onclick="filterOsint('unknown')" id="osintFilterUnknown">Unknown</button>
+            </div>
+            <div id="osintResultsFeed" class="mt-2">
+                <div class="text-muted text-sm">Waiting for investigations...</div>
+            </div>
+        </div>
+
+        <!-- Queue -->
+        <div class="card">
+            <div class="card-title">Pending Queue</div>
+            <div id="osintQueueList" class="mt-1">
+                <span class="text-muted text-sm">Queue empty</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== CAMERA FEEDS ==================== -->
+    <div class="tab-content" id="tab-camera">
+        <div class="card">
+            <div class="card-title">Camera Stream Viewer</div>
+            <div class="flex-row">
+                <input type="text" id="camIP" placeholder="Camera IP">
+                <input type="text" id="camPort" placeholder="Port" style="width:80px" value="554">
+                <button onclick="startFeed()">Connect</button>
+            </div>
+            <div class="text-sm text-muted mt-1">
+                Requires opencv-python-headless. Tries 15+ RTSP/HTTP stream URL patterns.
+            </div>
+        </div>
+        <div class="camera-grid" id="cameraGrid"></div>
+        <div id="cameraStatus" class="mt-2 text-muted text-sm"></div>
+    </div>
+
+    <!-- ==================== WIFI TRAFFIC MONITOR ==================== -->
+    <div class="tab-content" id="tab-traffic">
+        <div class="card">
+            <div class="card-title">Live Traffic Monitor</div>
+            <div class="flex-row mb-2">
+                <span id="trafficStatus" class="text-sm text-muted">Initializing...</span>
+                <span id="trafficInterval" class="text-sm text-muted ml-2"></span>
+            </div>
+            <div class="flex-row">
+                <button onclick="toggleTrafficMonitor()" id="trafficToggleBtn">Pause Monitor</button>
+                <label class="text-sm text-muted">Interval (sec):</label>
+                <input type="number" id="trafficIntervalInput" value="60" min="10" max="600" style="width:80px">
+                <button onclick="setTrafficInterval()">Set</button>
+                <button onclick="fetchTrafficLive()">Refresh Now</button>
+            </div>
+        </div>
+
+        <!-- Throughput Cards -->
+        <div class="card">
+            <div class="card-title">Throughput (Last Interval)</div>
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-label">Upload</div>
+                    <div class="status-value" id="trafficSent">--</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Download</div>
+                    <div class="status-value" id="trafficRecv">--</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Packets Sent</div>
+                    <div class="status-value" id="trafficPktsSent">--</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Packets Received</div>
+                    <div class="status-value" id="trafficPktsRecv">--</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Active Connections</div>
+                    <div class="status-value" id="trafficConnCount">--</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Last Snapshot</div>
+                    <div class="status-value" id="trafficTimestamp">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traffic History Sparkline -->
+        <div class="card">
+            <div class="card-title">Traffic History (Recent Samples)</div>
+            <div id="trafficChart" style="display:flex;align-items:flex-end;height:120px;gap:2px;border-bottom:1px solid #333;padding-bottom:4px;overflow:hidden;">
+                <span class="text-muted text-sm">Waiting for data...</span>
+            </div>
+            <div class="flex-row mt-1">
+                <div class="text-sm"><span style="color:#6d4aff">■</span> Upload</div>
+                <div class="text-sm ml-2"><span style="color:#0f0">■</span> Download</div>
+            </div>
+        </div>
+
+        <!-- Protocol Distribution -->
+        <div class="card">
+            <div class="card-title">Protocol Distribution</div>
+            <div id="protocolChart">
+                <span class="text-muted text-sm">Waiting for data...</span>
+            </div>
+        </div>
+
+        <!-- Top Talkers -->
+        <div class="card">
+            <div class="card-title">Top Talkers (Most Connections)</div>
+            <table id="talkersTable" class="mt-1">
+                <thead><tr><th>Remote IP</th><th>Connections</th><th>Actions</th></tr></thead>
+                <tbody id="talkersBody">
+                    <tr><td colspan="3" class="text-muted">No data yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Connection States -->
+        <div class="card">
+            <div class="card-title">Connection States</div>
+            <div id="connStates" class="flex-row">
+                <span class="text-muted text-sm">No data yet</span>
+            </div>
+        </div>
+
+        <!-- Active Connections Table -->
+        <div class="card">
+            <div class="card-title">Active Connections <span class="text-muted text-sm" id="connCountLabel"></span></div>
+            <div class="flex-row mb-2">
+                <input type="text" id="connFilter" placeholder="Filter by IP or port..." oninput="filterConnections()">
+                <button onclick="fetchConnections()">Refresh</button>
+            </div>
+            <table id="connectionsTable" class="mt-1">
+                <thead>
+                    <tr><th>Process</th><th>Local Addr</th><th>Remote Addr</th><th>Status</th><th>PID</th></tr>
+                </thead>
+                <tbody id="connectionsBody">
+                    <tr><td colspan="5" class="text-muted">No data yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- WiFi Networks -->
+        <div class="card">
+            <div class="card-title">Nearby WiFi Networks</div>
+            <div id="wifiStatus" class="text-sm text-muted mb-2">Scanning...</div>
+            <table id="wifiTable" class="mt-1">
+                <thead>
+                    <tr><th>SSID</th><th>BSSID</th><th>Signal</th><th>Channel</th><th>Security</th></tr>
+                </thead>
+                <tbody id="wifiBody">
+                    <tr><td colspan="5" class="text-muted">No networks found</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ==================== CASE MANAGER ==================== -->
+    <div class="tab-content" id="tab-cases">
+        <div class="card">
+            <div class="card-title">Create New Case</div>
+            <div class="flex-row">
+                <input type="text" id="caseTitle" placeholder="Case title">
+                <button onclick="createCase()">Create</button>
+            </div>
+            <textarea id="caseSummary" placeholder="Case summary..." class="mt-1"></textarea>
+        </div>
+        <div class="card">
+            <div class="card-title">Open Cases</div>
+            <table id="caseTable">
+                <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead>
+                <tbody id="caseBody"></tbody>
+            </table>
+        </div>
+        <div class="card hidden" id="caseDetailCard">
+            <div class="card-title">Case: <span id="caseDetailTitle"></span></div>
+            <div class="flex-row mb-2">
+                <select id="entryType">
+                    <option value="note">Note</option>
+                    <option value="evidence">Evidence</option>
+                    <option value="finding">Finding</option>
+                    <option value="action">Action Taken</option>
+                </select>
+                <input type="text" id="entryContent" placeholder="Entry content...">
+                <button onclick="addEntry()">Add Entry</button>
+            </div>
+            <div id="caseEntries"></div>
+        </div>
+    </div>
+
+    <!-- ==================== ACTIVITY LOG ==================== -->
+    <div class="tab-content" id="tab-activity">
+        <div class="card">
+            <div class="card-title">Audit Trail</div>
+            <div class="flex-row">
+                <button onclick="loadActivity()">Refresh</button>
+                <button class="danger" onclick="clearActivity()">Clear Log</button>
+            </div>
+            <table id="activityTable" class="mt-2">
+                <thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Result</th></tr></thead>
+                <tbody id="activityBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+function switchTab(tabName) {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+
+    if (tabName === 'activity') loadActivity();
+    if (tabName === 'cases') loadCases();
+    if (tabName === 'status') loadStatus();
+}
+
+document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+// ============================================================================
+// SYSTEM STATUS
+// ============================================================================
+async function loadStatus() {
+    try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const caps = data.capabilities;
+        const tools = data.tools;
+
+        document.getElementById('headerInfo').innerHTML = `
+            IP: <span>${data.local_ip}</span> | Subnet: <span>${data.subnet}</span> | GW: <span>${data.gateway || 'N/A'}</span>
+        `;
+
+        const html = `
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-label">Local IP</div>
+                    <div class="status-value">${data.local_ip}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Subnet</div>
+                    <div class="status-value">${data.subnet}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Gateway</div>
+                    <div class="status-value">${data.gateway || 'N/A'}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Interface</div>
+                    <div class="status-value">${data.interface || 'N/A'}</div>
+                </div>
+            </div>
+            <h3 class="mt-3" style="color:#6d4aff;font-size:0.85rem;text-transform:uppercase;">Capabilities</h3>
+            <div class="status-grid mt-1">
+                <div class="status-item">
+                    <div class="status-label">Nmap</div>
+                    <div class="status-value">${caps.nmap ? '✅ Available' : '❌ Not Installed'}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Bettercap</div>
+                    <div class="status-value">${caps.bettercap ? '✅ Available' : '❌ Not Installed'}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">OpenCV (Cameras)</div>
+                    <div class="status-value">${caps.opencv ? '✅ Available' : '❌ Not Installed'}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Sudo Access</div>
+                    <div class="status-value">${caps.sudo ? '✅ Available' : '❌ No Sudo'}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">AbuseIPDB</div>
+                    <div class="status-value">${tools.abuseipdb ? '✅ Configured' : '⚠️ No API Key'}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Shodan</div>
+                    <div class="status-value">${tools.shodan ? '✅ Configured' : '⚠️ No API Key'}</div>
+                </div>
+            </div>
+        `;
+        document.getElementById('statusContent').innerHTML = html;
+    } catch (e) {
+        document.getElementById('statusContent').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+// ============================================================================
+// LAN MONITOR
+// ============================================================================
+async function lanScan() {
+    const btn = document.getElementById('lanScanBtn');
+    btn.innerHTML = '<span class="loader"></span> Scanning...';
+    document.getElementById('lanStatus').textContent = 'Probing subnet...';
+    try {
+        const res = await fetch('/api/lan/scan');
+        const data = await res.json();
+        const tbody = document.getElementById('lanBody');
+        tbody.innerHTML = '';
+        data.devices.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${d.ip}</td>
+                <td>${d.ports.join(', ')}</td>
+                <td><span class="badge badge-green">ONLINE</span></td>
+                <td>
+                    <button onclick="lanDetail('${d.ip}')">Details</button>
+                    <button onclick="nmapScan('${d.ip}')">Nmap</button>
+                    ${d.ports.includes(554) || d.ports.includes(80) || d.ports.includes(8080)
+                        ? `<button onclick="connectCamera('${d.ip}', ${d.ports[0]})">📷 Camera</button>`
+                        : ''}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        document.getElementById('lanTable').classList.remove('hidden');
+        document.getElementById('lanStatus').textContent = `Found ${data.count} device(s) with open ports.`;
+    } catch (e) {
+        document.getElementById('lanStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+    btn.innerHTML = 'Scan LAN (Port Probe)';
+}
+
+async function lanArp() {
+    const btn = document.getElementById('lanArpBtn');
+    btn.innerHTML = '<span class="loader"></span> Scanning...';
+    try {
+        const res = await fetch('/api/lan/arp');
+        const data = await res.json();
+        const tbody = document.getElementById('lanBody');
+        tbody.innerHTML = '';
+        data.devices.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${d.ip}</td>
+                <td>${d.mac || 'N/A'} ${d.vendor ? '(' + d.vendor + ')' : ''}</td>
+                <td><span class="badge badge-green">ONLINE</span></td>
+                <td><button onclick="lanDetail('${d.ip}')">Details</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        document.getElementById('lanTable').classList.remove('hidden');
+        document.getElementById('lanStatus').textContent = `ARP scan found ${data.count} device(s).`;
+    } catch (e) {
+        document.getElementById('lanStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+    btn.innerHTML = 'ARP Scan';
+}
+
+async function lanDetail(ip) {
+    document.getElementById('lanDeviceIP').textContent = ip;
+    document.getElementById('lanDeviceCard').classList.remove('hidden');
+    document.getElementById('lanDeviceDetail').innerHTML = '<span class="loader"></span> Scanning ports...';
+    try {
+        const res = await fetch(`/api/lan/ports/${ip}`);
+        const data = await res.json();
+        document.getElementById('lanDeviceDetail').innerHTML = `
+            <p><strong>Open Ports:</strong> ${data.open_ports.length ? data.open_ports.join(', ') : 'None found'}</p>
+            <div class="flex-row mt-2">
+                <button onclick="nmapScan('${ip}')">Run Nmap</button>
+                <button onclick="diagnose('${ip}', 'recon')">Bettercap Recon</button>
+                <button class="danger" onclick="diagnose('${ip}', 'active')">Bettercap MITM</button>
+            </div>
+        `;
+    } catch (e) {
+        document.getElementById('lanDeviceDetail').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function nmapScan(ip) {
+    if (!confirm(`Run nmap service detection scan on ${ip}?`)) return;
+    const card = document.getElementById('lanDeviceCard');
+    card.classList.remove('hidden');
+    document.getElementById('lanDeviceDetail').innerHTML = '<span class="loader"></span> Running nmap (may take 30-60s)...';
+    try {
+        const res = await fetch(`/api/diagnose/${ip}`);
+        const data = await res.json();
+        document.getElementById('lanDeviceDetail').innerHTML = `
+            <div class="flex-row">
+                <button onclick="lanDetail('${ip}')">Back to Details</button>
+            </div>
+            <div class="output mt-2">${data.nmap.output || 'No output'}</div>
+            ${data.bettercap.ok ? `<div class="output mt-2">${data.bettercap.output}</div>` : ''}
+        `;
+    } catch (e) {
+        document.getElementById('lanDeviceDetail').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+// ============================================================================
+// LIVE LAN MONITOR
+// ============================================================================
+let autoScanEnabled = true;
+let liveRefreshTimer = null;
+
+function startLiveMonitor() {
+    if (liveRefreshTimer) clearInterval(liveRefreshTimer);
+    liveRefreshTimer = setInterval(() => {
+        if (autoScanEnabled && getCurrentTab() === 'lan') {
+            fetchLiveScan();
+        }
+    }, 5000); // Refresh display every 5 seconds
+    fetchLiveScan();
+}
+
+function getCurrentTab() {
+    const active = document.querySelector('.nav-tab.active');
+    return active ? active.dataset.tab : 'status';
+}
+
+async function fetchLiveScan() {
+    try {
+        const res = await fetch('/api/lan/live');
+        const data = await res.json();
+
+        const statusEl = document.getElementById('liveStatus');
+        const countEl = document.getElementById('liveCount');
+
+        if (data.scanning) {
+            statusEl.innerHTML = '<span class="loader"></span> Scanning network...';
+        } else if (data.last_scan) {
+            const ago = Math.round((Date.now() - new Date(data.last_scan).getTime()) / 1000);
+            statusEl.innerHTML = `Last scan: ${ago}s ago`;
+        }
+
+        countEl.textContent = data.devices.length ? `${data.devices.length} device(s) online` : '';
+
+        const tbody = document.getElementById('lanBody');
+        if (!data.devices.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No devices found yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.devices.forEach(d => {
+            const tr = document.createElement('tr');
+            const hasCamera = d.ports.some(p => [554, 80, 8080, 8000, 8060].includes(p));
+            tr.innerHTML = `
+                <td>${d.ip}</td>
+                <td>${d.ports.join(', ') || 'None'}</td>
+                <td><span class="badge badge-green">ONLINE</span></td>
+                <td>
+                    <button onclick="lanDetail('${d.ip}')">Details</button>
+                    <button onclick="nmapScan('${d.ip}')">Nmap</button>
+                    ${hasCamera ? `<button onclick="connectCamera('${d.ip}', ${d.ports.find(p => [554,80,8080,8000,8060].includes(p))})">📷 Camera</button>` : ''}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        document.getElementById('lanTable').classList.remove('hidden');
+
+        // Also fetch known devices
+        fetchKnownDevices();
+    } catch (e) {
+        document.getElementById('liveStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function fetchKnownDevices() {
+    try {
+        const res = await fetch('/api/lan/known');
+        const data = await res.json();
+        const tbody = document.getElementById('knownBody');
+        if (!data.devices.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No known devices yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        data.devices.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${d.ip}</td>
+                <td>${d.hostname || 'N/A'}</td>
+                <td>${new Date(d.first_seen).toLocaleString()}</td>
+                <td>${new Date(d.last_seen).toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {}
+}
+
+function toggleAutoScan() {
+    autoScanEnabled = !autoScanEnabled;
+    const btn = document.getElementById('autoScanBtn');
+    btn.textContent = autoScanEnabled ? 'Pause Auto-Scan' : 'Resume Auto-Scan';
+    btn.className = autoScanEnabled ? '' : 'active-btn';
+}
+
+async function updateInterval() {
+    const val = parseInt(document.getElementById('scanInterval').value);
+    if (!val || val < 10) return alert('Minimum 10 seconds');
+    try {
+        await fetch('/api/lan/interval', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({interval: val})
+        });
+        document.getElementById('liveStatus').textContent = `Interval set to ${val}s`;
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+async function manualScan() {
+    document.getElementById('liveStatus').innerHTML = '<span class="loader"></span> Manual scan triggered...';
+    try {
+        await fetch('/api/lan/scan');
+        setTimeout(fetchLiveScan, 2000);
+    } catch (e) {
+        document.getElementById('liveStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+function connectCamera(ip, port) {
+    switchTab('camera');
+    document.getElementById('camIP').value = ip;
+    document.getElementById('camPort').value = port;
+    startFeed();
+}
+
+async function diagnose(ip, mode) {
+    if (mode === 'active') {
+        if (!confirm('⚠️ Active MITM mode will ARP spoof this target. Only use on networks you own. Continue?')) return;
+        if (!confirm('Last warning: This intercepts traffic. Unauthorized use is illegal. Proceed?')) return;
+    }
+    document.getElementById('lanDeviceDetail').innerHTML = `<span class="loader"></span> Running ${mode} diagnostics...`;
+    try {
+        const url = `/api/diagnose/${ip}?mode=${mode}${mode === 'active' ? '&confirm=yes' : ''}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        let html = `<button onclick="lanDetail('${ip}')">Back</button>`;
+        html += `<div class="output mt-2"><strong>Nmap:</strong>\n${data.nmap.output || 'No output'}</div>`;
+        if (data.bettercap) {
+            html += `<div class="output mt-2"><strong>Bettercap (${mode}):</strong>\n${data.bettercap.output || 'No output'}</div>`;
+            if (data.bettercap.warning) {
+                html += `<div class="text-danger text-sm mt-1">⚠️ ${data.bettercap.warning}</div>`;
+            }
+        }
+        document.getElementById('lanDeviceDetail').innerHTML = html;
+    } catch (e) {
+        document.getElementById('lanDeviceDetail').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+// ============================================================================
+// IP INTELLIGENCE
+// ============================================================================
+async function ipLookup() {
+    const target = document.getElementById('ipTarget').value.trim();
+    if (!target) return;
+    document.getElementById('ipResultCard').classList.remove('hidden');
+    document.getElementById('ipResultContent').innerHTML = '<span class="loader"></span> Investigating...';
+    try {
+        const res = await fetch(`/api/ip/lookup/${encodeURIComponent(target)}`);
+        const data = await res.json();
+
+        if (data.error) {
+            document.getElementById('ipResultContent').innerHTML = `<span class="text-danger">${data.error}</span>`;
+            return;
+        }
+
+        if (data.domain) {
+            // Domain investigation
+            let html = `<div class="status-grid">
+                <div class="status-item"><div class="status-label">Domain</div><div class="status-value">${data.domain}</div></div>
+                <div class="status-item"><div class="status-label">Resolved IP</div><div class="status-value">${data.resolved_ip}</div></div>
+            </div>`;
+
+            if (data.ip_info) {
+                html += `<div class="card mt-2"><div class="card-title">IP Geolocation</div>
+                <table><tbody>
+                    <tr><td>Country</td><td>${data.ip_info.country}</td></tr>
+                    <tr><td>Region</td><td>${data.ip_info.region}</td></tr>
+                    <tr><td>City</td><td>${data.ip_info.city}</td></tr>
+                    <tr><td>ISP</td><td>${data.ip_info.isp}</td></tr>
+                    <tr><td>ASN</td><td>${data.ip_info.as}</td></tr>
+                    <tr><td>Coordinates</td><td>${data.ip_info.lat}, ${data.ip_info.lon}</td></tr>
+                    <tr><td>Reverse DNS</td><td>${data.ip_info.reverse_dns}</td></tr>
+                </tbody></table></div>`;
+            }
+
+            if (data.dns) {
+                html += `<div class="card mt-2"><div class="card-title">DNS Records</div>`;
+                for (const [rtype, records] of Object.entries(data.dns)) {
+                    html += `<div class="mb-1"><strong>${rtype}:</strong> ${records.length ? records.join(', ') : '<span class="text-muted">none</span>'}</div>`;
+                }
+                html += `</div>`;
+            }
+
+            if (data.subdomains) {
+                html += `<div class="card mt-2"><div class="card-title">Subdomains (${data.subdomains.length})</div>`;
+                html += `<div class="output" style="max-height:200px">${data.subdomains.join('\n')}</div>`;
+                html += `</div>`;
+            }
+
+            if (data.whois && data.whois.raw) {
+                html += `<div class="card mt-2"><div class="card-title">WHOIS / RDAP</div>
+                <div class="output" style="max-height:300px">${data.whois.raw.substring(0, 3000)}</div></div>`;
+            }
+
+            document.getElementById('ipResultContent').innerHTML = html;
+        } else {
+            // Direct IP investigation
+            const html = `
+                <div class="status-grid">
+                    <div class="status-item"><div class="status-label">IP</div><div class="status-value">${data.ip}</div></div>
+                    <div class="status-item"><div class="status-label">Country</div><div class="status-value">${data.country}</div></div>
+                    <div class="status-item"><div class="status-label">Region</div><div class="status-value">${data.region}</div></div>
+                    <div class="status-item"><div class="status-label">City</div><div class="status-value">${data.city}</div></div>
+                    <div class="status-item"><div class="status-label">ISP</div><div class="status-value">${data.isp}</div></div>
+                    <div class="status-item"><div class="status-label">Organization</div><div class="status-value">${data.org}</div></div>
+                    <div class="status-item"><div class="status-label">ASN</div><div class="status-value">${data.as}</div></div>
+                    <div class="status-item"><div class="status-label">Reverse DNS</div><div class="status-value">${data.reverse_dns}</div></div>
+                    <div class="status-item"><div class="status-label">Coordinates</div><div class="status-value">${data.lat}, ${data.lon}</div></div>
+                    <div class="status-item"><div class="status-label">Timezone</div><div class="status-value">${data.timezone}</div></div>
+                </div>
+            `;
+            document.getElementById('ipResultContent').innerHTML = html;
+        }
+    } catch (e) {
+        document.getElementById('ipResultContent').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function ipThreat() {
+    const ip = document.getElementById('threatIP').value.trim();
+    if (!ip) return;
+    document.getElementById('threatResult').innerHTML = '<span class="loader"></span> Checking threat databases...';
+    try {
+        const res = await fetch(`/api/ip/threat/${ip}`);
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('threatResult').innerHTML = `<span class="text-danger">${data.error}</span>`;
+            return;
+        }
+        const scoreColor = data.abuse_score > 50 ? 'text-danger' : data.abuse_score > 20 ? 'text-muted' : 'text-success';
+        document.getElementById('threatResult').innerHTML = `
+            <div class="status-grid mt-1">
+                <div class="status-item"><div class="status-label">Abuse Score</div><div class="status-value ${scoreColor}">${data.abuse_score}/100</div></div>
+                <div class="status-item"><div class="status-label">Total Reports</div><div class="status-value">${data.total_reports}</div></div>
+                <div class="status-item"><div class="status-label">Usage Type</div><div class="status-value">${data.usage_type || 'N/A'}</div></div>
+                <div class="status-item"><div class="status-label">ISP</div><div class="status-value">${data.isp || 'N/A'}</div></div>
+            </div>
+        `;
+    } catch (e) {
+        document.getElementById('threatResult').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function ipShodan() {
+    const ip = document.getElementById('threatIP').value.trim();
+    if (!ip) return;
+    document.getElementById('threatResult').innerHTML = '<span class="loader"></span> Querying Shodan...';
+    try {
+        const res = await fetch(`/api/ip/shodan/${ip}`);
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('threatResult').innerHTML = `<span class="text-danger">${data.error}</span>`;
+            return;
+        }
+        let vulnHtml = '';
+        if (data.vulns && data.vulns.length) {
+            vulnHtml = `<div class="text-danger mt-1">⚠️ Vulnerabilities: ${data.vulns.join(', ')}</div>`;
+        }
+        document.getElementById('threatResult').innerHTML = `
+            <div class="status-grid mt-1">
+                <div class="status-item"><div class="status-label">Open Ports</div><div class="status-value">${data.ports.join(', ')}</div></div>
+                <div class="status-item"><div class="status-label">Hostnames</div><div class="status-value">${data.hostnames.join(', ') || 'N/A'}</div></div>
+                <div class="status-item"><div class="status-label">Country</div><div class="status-value">${data.country}</div></div>
+                <div class="status-item"><div class="status-label">Org</div><div class="status-value">${data.org}</div></div>
+                <div class="status-item"><div class="status-label">OS</div><div class="status-value">${data.os || 'N/A'}</div></div>
+            </div>
+            ${vulnHtml}
+        `;
+    } catch (e) {
+        document.getElementById('threatResult').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+// ============================================================================
+// OSINT TOOLKIT
+// ============================================================================
+async function osintSubs() {
+    const domain = document.getElementById('subDomain').value.trim();
+    if (!domain) return;
+    document.getElementById('subResult').innerHTML = '<span class="loader"></span> Enumerating subdomains via crt.sh...';
+    try {
+        const res = await fetch(`/api/osint/subdomains/${encodeURIComponent(domain)}`);
+        const data = await res.json();
+        document.getElementById('subResult').innerHTML = `
+            <div class="text-sm text-muted">Found ${data.count} subdomain(s)</div>
+            <div class="output mt-1" style="max-height:250px">${data.subdomains.join('\n') || 'None found'}</div>
+        `;
+    } catch (e) {
+        document.getElementById('subResult').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function osintDNS() {
+    const domain = document.getElementById('dnsDomain').value.trim();
+    if (!domain) return;
+    document.getElementById('dnsResult').innerHTML = '<span class="loader"></span> Querying DNS records...';
+    try {
+        const res = await fetch(`/api/osint/dns/${encodeURIComponent(domain)}`);
+        const data = await res.json();
+        let html = '';
+        for (const [rtype, records] of Object.entries(data.records)) {
+            html += `<div class="mb-1"><strong>${rtype}:</strong> ${records.length ? records.join(', ') : '<span class="text-muted">none</span>'}</div>`;
+        }
+        document.getElementById('dnsResult').innerHTML = html || '<span class="text-muted">No records found</span>';
+    } catch (e) {
+        document.getElementById('dnsResult').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function osintWhois() {
+    const domain = document.getElementById('whoisDomain').value.trim();
+    if (!domain) return;
+    document.getElementById('whoisResult').innerHTML = '<span class="loader"></span> Running WHOIS lookup...';
+    try {
+        const res = await fetch(`/api/osint/whois/${encodeURIComponent(domain)}`);
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('whoisResult').innerHTML = `<span class="text-danger">${data.error}</span>`;
+            return;
+        }
+        document.getElementById('whoisResult').innerHTML = `
+            <div class="output" style="max-height:350px">${data.raw.substring(0, 4000)}</div>
+        `;
+    } catch (e) {
+        document.getElementById('whoisResult').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+// ============================================================================
+// CAMERA FEEDS
+// ============================================================================
+async function startFeed() {
+    const ip = document.getElementById('camIP').value.trim();
+    const port = document.getElementById('camPort').value.trim();
+    if (!ip || !port) return;
+
+    document.getElementById('cameraStatus').innerHTML = `<span class="loader"></span> Connecting to ${ip}:${port}...`;
+    try {
+        const res = await fetch(`/api/stream/start/${ip}/${port}`);
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('cameraStatus').innerHTML = `<span class="text-danger">${data.error}</span>`;
+            return;
+        }
+        const grid = document.getElementById('cameraGrid');
+        const tile = document.createElement('div');
+        tile.className = 'camera-tile';
+        tile.id = `feed-${data.feed_id}`;
+        tile.innerHTML = `
+            <div class="camera-tile-header">
+                <span>📹 ${ip}:${port}</span>
+                <button class="danger" onclick="stopFeed('${data.feed_id}')">Stop</button>
+            </div>
+            <img src="/stream/${data.feed_id}" alt="Camera feed ${ip}:${port}">
+        `;
+        grid.appendChild(tile);
+        document.getElementById('cameraStatus').innerHTML = `<span class="text-success">Connected: ${data.url}</span>`;
+    } catch (e) {
+        document.getElementById('cameraStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function stopFeed(feedId) {
+    await fetch(`/api/stream/stop/${feedId}`);
+    document.getElementById(`feed-${feedId}`).remove();
+    document.getElementById('cameraStatus').innerHTML = '<span class="text-muted">Feed stopped.</span>';
+}
+
+// ============================================================================
+// CASE MANAGER
+// ============================================================================
+async function loadCases() {
+    const tbody = document.getElementById('caseBody');
+    try {
+        const res = await fetch('/api/cases');
+        const data = await res.json();
+        tbody.innerHTML = '';
+        if (!data.cases.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No cases yet</td></tr>';
+            return;
+        }
+        data.cases.forEach(c => {
+            const tr = document.createElement('tr');
+            const badgeClass = c.status === 'open' ? 'badge-green' : 'badge-gray';
+            tr.innerHTML = `
+                        <td>${c.id}</td>
+            <td>${c.title}</td>
+            <td><span class="badge ${badgeClass}">${c.status}</span></td>
+            <td>${new Date(c.updated).toLocaleString()}</td>
+            <td>
+                <button onclick="viewCase(${c.id})">View</button>
+                <button onclick="deleteCase(${c.id})">Delete</button>
+            </td>
+        `;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-danger">Error loading cases</td></tr>';
+    }
+}
+
+async function createCase() {
+    const title = document.getElementById('caseTitle').value.trim();
+    const summary = document.getElementById('caseSummary').value.trim();
+    if (!title) return alert('Case title required');
+    try {
+        const res = await fetch('/api/cases/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title, summary})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('caseTitle').value = '';
+            document.getElementById('caseSummary').value = '';
+            loadCases();
+            viewCase(data.case_id);
+        } else {
+            alert('Failed: ' + JSON.stringify(data));
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+let currentCaseId = null;
+
+async function viewCase(caseId) {
+    currentCaseId = caseId;
+    document.getElementById('caseDetailCard').classList.remove('hidden');
+    document.getElementById('caseEntries').innerHTML = '<span class="loader"></span> Loading...';
+    try {
+        const res = await fetch(`/api/cases/${caseId}/entries`);
+        const data = await res.json();
+        let html = '';
+        if (!data.entries.length) {
+            html = '<div class="text-muted text-sm mt-1">No entries yet</div>';
+        } else {
+            data.entries.forEach(e => {
+                const typeColor = e.entry_type === 'note' ? '#6d4aff' : 
+                    e.entry_type === 'evidence' ? '#0a3' : 
+                    e.entry_type === 'finding' ? '#f44' : '#888';
+                html += `
+                    <div class="case-entry">
+                        <div class="case-entry-meta">
+                            <span class="case-entry-type" style="background:${typeColor};color:#fff">${e.entry_type.toUpperCase()}</span>
+                            ${new Date(e.timestamp).toLocaleString()}
+                        </div>
+                        <div class="text-sm">${escapeHtml(e.content)}</div>
+                    </div>
+                `;
+            });
+        }
+        document.getElementById('caseEntries').innerHTML = html;
+    } catch (e) {
+        document.getElementById('caseEntries').innerHTML = '<span class="text-danger">Error loading entries</span>';
+    }
+}
+
+async function addEntry() {
+    if (!currentCaseId) return;
+    const entryType = document.getElementById('entryType').value;
+    const content = document.getElementById('entryContent').value.trim();
+    if (!content) return alert('Entry content required');
+    try {
+        const res = await fetch(`/api/cases/${currentCaseId}/entries/add`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({type: entryType, content})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('entryContent').value = '';
+            viewCase(currentCaseId);
+        } else {
+            alert('Failed: ' + JSON.stringify(data));
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+async function deleteCase(caseId) {
+    if (!confirm('Permanently delete this case?')) return;
+    // Placeholder — implement DELETE endpoint later
+    alert('Delete implemented via SQL directly for now.');
+}
+
+// ============================================================================
+// ACTIVITY LOG
+// ============================================================================
+async function loadActivity() {
+    const tbody = document.getElementById('activityBody');
+    try {
+        const res = await fetch('/api/activity?limit=100');
+        const data = await res.json();
+        tbody.innerHTML = '';
+        data.activity.forEach(a => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${new Date(a.timestamp).toLocaleString()}</td>
+                <td>${a.action}</td>
+                <td>${a.target || '-'}</td>
+                <td>${truncate(a.result, 80) || '-'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-danger">Error loading log</td></tr>';
+    }
+}
+
+async function clearActivity() {
+    if (!confirm('Clear ALL activity log? Cannot undo.')) return;
+    try {
+        await fetch('/api/activity/clear', {method: 'POST'});
+        loadActivity();
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+// Utilities
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function truncate(str, len) {
+    if (str && str.length > len) return str.substring(0, len) + '...';
+    return str;
+}
+
+// ============================================================================
+// WIFI TRAFFIC MONITOR
+// ============================================================================
+let trafficTimer = null;
+let trafficEnabled = true;
+let allConnections = [];
+
+function startTrafficMonitor() {
+    if (trafficTimer) clearInterval(trafficTimer);
+    // Fetch live data every 60 seconds (matches backend interval)
+    // But also fetch immediately
+    fetchTrafficLive();
+    fetchConnections();
+    fetchTrafficHistory();
+    trafficTimer = setInterval(() => {
+        if (getCurrentTab() === 'traffic' && trafficEnabled) {
+            fetchTrafficLive();
+            fetchConnections();
+            fetchTrafficHistory();
+        }
+    }, 60000); // 1 minute refresh
+}
+
+async function fetchTrafficLive() {
+    try {
+        const res = await fetch('/api/traffic/live');
+        const data = await res.json();
+
+        if (data.status === 'waiting') {
+            document.getElementById('trafficStatus').innerHTML =
+                `<span class="loader"></span> Waiting for first snapshot (every ${data.interval}s)...`;
+            return;
+        }
+
+        const ago = Math.round((Date.now() - new Date(data.timestamp).getTime()) / 1000);
+
+        document.getElementById('trafficStatus').textContent = `Last update: ${ago}s ago`;
+        document.getElementById('trafficInterval').textContent = `| Interval: 60s`;
+
+        document.getElementById('trafficSent').textContent = data.total_sent_formatted || '--';
+        document.getElementById('trafficRecv').textContent = data.total_recv_formatted || '--';
+        document.getElementById('trafficPktsSent').textContent = data.packets_sent?.toLocaleString() || '--';
+        document.getElementById('trafficPktsRecv').textContent = data.packets_recv?.toLocaleString() || '--';
+        document.getElementById('trafficConnCount').textContent = data.connection_count || '--';
+        document.getElementById('trafficTimestamp').textContent = new Date(data.timestamp).toLocaleTimeString();
+
+        // Render protocol distribution
+        renderProtocols(data.protocols || {});
+
+        // Render connection states
+        renderConnStates(data.conn_states || {});
+
+        // Render top talkers
+        renderTalkers(data.top_talkers || {});
+    } catch (e) {
+        document.getElementById('trafficStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function fetchTrafficHistory() {
+    try {
+        const res = await fetch('/api/traffic/history?limit=30');
+        const data = await res.json();
+        renderTrafficChart(data.history || []);
+    } catch (e) {}
+}
+
+async function fetchConnections() {
+    try {
+        const res = await fetch('/api/traffic/connections?limit=100');
+        const data = await res.json();
+        allConnections = data.connections || [];
+        renderConnections(allConnections);
+        document.getElementById('connCountLabel').textContent = `(${data.count})`;
+    } catch (e) {
+        document.getElementById('connectionsBody').innerHTML =
+            `<tr><td colspan="5" class="text-danger">Error: ${e}</td></tr>`;
+    }
+}
+
+function renderTrafficChart(history) {
+    const chart = document.getElementById('trafficChart');
+    if (!history.length) return;
+
+    const maxBytes = Math.max(...history.flatMap(h => [h.bytes_sent, h.bytes_recv]), 1);
+
+    chart.innerHTML = history.map(h => {
+        const sentH = Math.max((h.bytes_sent / maxBytes) * 100, 1);
+        const recvH = Math.max((h.bytes_recv / maxBytes) * 100, 1);
+        const ts = new Date(h.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+        return `
+            <div style="display:flex;flex-direction:column;justify-content:flex-end;height:100%;flex:1;min-width:8px;" title="${ts} | ↑${formatBytes(h.bytes_sent)} ↓${formatBytes(h.bytes_recv)} | ${h.connections} conns">
+                <div style="background:#6d4aff;height:${sentH}%;border-radius:2px 2px 0 0;"></div>
+                <div style="background:#0a0;height:${recvH}%;border-radius:0 0 2px 2px;"></div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderProtocols(protocols) {
+    const container = document.getElementById('protocolChart');
+    if (!Object.keys(protocols).length) {
+        container.innerHTML = '<span class="text-muted text-sm">No protocols detected</span>';
+        return;
+    }
+    const max = Math.max(...Object.values(protocols), 1);
+    container.innerHTML = Object.entries(protocols).map(([proto, count]) => {
+        const pct = (count / max) * 100;
+        return `
+            <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+                <div style="width:120px;font-size:0.78rem;color:#aaa;text-align:right;">${proto}</div>
+                <div style="flex:1;background:#1a1a1a;border-radius:3px;height:16px;overflow:hidden;">
+                    <div style="background:linear-gradient(90deg,#6d4aff,#9d4edd);height:100%;width:${pct}%;border-radius:3px;"></div>
+                </div>
+                <div style="width:40px;font-size:0.78rem;color:#6d4aff;">${count}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderConnStates(states) {
+    const container = document.getElementById('connStates');
+    if (!Object.keys(states).length) {
+        container.innerHTML = '<span class="text-muted text-sm">No connection states</span>';
+        return;
+    }
+    container.innerHTML = Object.entries(states).map(([state, count]) => {
+        const color = state === 'ESTABLISHED' ? 'badge-green' :
+                      state === 'LISTEN' ? 'badge-gray' :
+                      state === 'TIME_WAIT' ? 'badge-yellow' : 'badge-gray';
+        return `<span class="badge ${color}">${state}: ${count}</span>`;
+    }).join('');
+}
+
+function renderTalkers(talkers) {
+    const tbody = document.getElementById('talkersBody');
+    if (!Object.keys(talkers).length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data yet</td></tr>';
+        return;
+    }
+    tbody.innerHTML = Object.entries(talkers).map(([ip, count]) => `
+        <tr>
+            <td>${ip}</td>
+            <td><span class="badge badge-purple">${count}</span></td>
+            <td>
+                <button onclick="investigateIP('${ip}')" class="text-sm">🔍 Investigate</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderConnections(conns) {
+    const tbody = document.getElementById('connectionsBody');
+    if (!conns.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No active connections</td></tr>';
+        return;
+    }
+    tbody.innerHTML = conns.map(c => {
+        const statusClass = c.status === 'ESTABLISHED' ? 'text-success' :
+                           c.status === 'LISTEN' ? 'text-muted' : '';
+        return `
+            <tr>
+                <td class="text-sm">${c.process || 'N/A'}</td>
+                <td class="text-sm">${c.laddr || 'N/A'}</td>
+                <td class="text-sm">${c.raddr || 'N/A'}</td>
+                <td class="text-sm ${statusClass}">${c.status}</td>
+                <td class="text-sm">${c.pid || 'N/A'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filterConnections() {
+    const filter = document.getElementById('connFilter').value.toLowerCase();
+    const filtered = allConnections.filter(c =>
+        (c.laddr && c.laddr.toLowerCase().includes(filter)) ||
+        (c.raddr && c.raddr.toLowerCase().includes(filter)) ||
+        (c.process && c.process.toLowerCase().includes(filter)) ||
+        (c.status && c.status.toLowerCase().includes(filter))
+    );
+    renderConnections(filtered);
+}
+
+function investigateIP(ip) {
+    // Strip port if present
+    ip = ip.split(':')[0];
+    switchTab('ipintel');
+    document.getElementById('ipTarget').value = ip;
+    ipLookup();
+}
+
+async function toggleTrafficMonitor() {
+    try {
+        const res = await fetch('/api/traffic/toggle', {method: 'POST'});
+        const data = await res.json();
+        trafficEnabled = data.enabled;
+        const btn = document.getElementById('trafficToggleBtn');
+        btn.textContent = trafficEnabled ? 'Pause Monitor' : 'Resume Monitor';
+        btn.className = trafficEnabled ? '' : 'active-btn';
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+async function setTrafficInterval() {
+    const val = parseInt(document.getElementById('trafficIntervalInput').value);
+    if (!val || val < 10) return alert('Minimum 10 seconds');
+    try {
+        const res = await fetch('/api/traffic/interval', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({interval: val})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('trafficInterval').textContent = `| Interval: ${val}s`;
+            // Restart timer with new interval
+            startTrafficMonitor();
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+// Byte formatter
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// Load status on page load
+// ============================================================================
+// AUTO-OSINT ENGINE
+// ============================================================================
+let osintTimer = null;
+let osintEngineEnabled = true;
+let osintFilter = 'all';
+let osintResults = [];
+
+function startOsintMonitor() {
+    if (osintTimer) clearInterval(osintTimer);
+    fetchOsintLive();
+    fetchOsintResults();
+    osintTimer = setInterval(() => {
+        if (getCurrentTab() === 'osint') {
+            fetchOsintLive();
+            fetchOsintResults();
+        }
+    }, 5000); // Refresh every 5 seconds
+}
+
+async function fetchOsintLive() {
+    try {
+        const res = await fetch('/api/osint/auto/live');
+        const data = await res.json();
+
+        osintEngineEnabled = data.enabled;
+
+        const statusEl = document.getElementById('osintEngineStatus');
+        if (!data.enabled) {
+            statusEl.innerHTML = '<span class="text-danger">⚠ Engine paused</span>';
+        } else if (data.processing) {
+            statusEl.innerHTML = `<span class="loader"></span> Investigating: <strong>${data.current_target}</strong>`;
+        } else {
+            statusEl.innerHTML = '<span class="text-success">✓ Engine active — monitoring</span>';
+        }
+
+        document.getElementById('osintQueueSize').textContent =
+            data.queue_size ? `| Queue: ${data.queue_size} pending` : '| Queue empty';
+
+        document.getElementById('osintTotalProcessed').textContent = data.stats.total_processed;
+        document.getElementById('osintIpsDone').textContent = data.stats.ips_investigated;
+        document.getElementById('osintDomainsDone').textContent = data.stats.domains_investigated;
+        document.getElementById('osintThreatsFound').textContent = data.stats.threats_found;
+        document.getElementById('osintErrors').textContent = data.stats.errors;
+        document.getElementById('osintCurrent').textContent = data.current_target || 'Idle';
+
+        // Render queue
+        renderOsintQueue(data.queue || []);
+
+        // Update toggle button
+        const btn = document.getElementById('osintToggleBtn');
+        btn.textContent = data.enabled ? 'Pause Engine' : 'Resume Engine';
+        btn.className = data.enabled ? '' : 'active-btn';
+    } catch (e) {
+        document.getElementById('osintEngineStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+async function fetchOsintResults() {
+    try {
+        const url = osintFilter === 'all'
+            ? '/api/osint/auto/results?limit=50'
+            : `/api/osint/auto/results?limit=50&classification=${osintFilter}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        osintResults = data.results || [];
+        renderOsintResults(osintResults);
+    } catch (e) {
+        document.getElementById('osintResultsFeed').innerHTML =
+            `<span class="text-danger">Error: ${e}</span>`;
+    }
+}
+
+function renderOsintResults(results) {
+    const feed = document.getElementById('osintResultsFeed');
+    if (!results.length) {
+        feed.innerHTML = '<div class="text-muted text-sm">No results yet — waiting for investigations...</div>';
+        return;
+    }
+
+    feed.innerHTML = results.map(r => {
+        const threatBadge = r.threat_score !== null
+            ? (r.threat_score > 50 ? '<span class="badge badge-red">THREAT</span>'
+               : r.threat_score > 20 ? '<span class="badge badge-yellow">SUSPICIOUS</span>'
+               : '<span class="badge badge-green">CLEAN</span>')
+            : '';
+
+        const classColor = r.classification === 'malicious' ? '#f44' :
+                          r.classification === 'suspicious' ? '#ff0' :
+                          r.classification === 'clean' ? '#0f0' :
+                          r.classification === 'identified' ? '#08f' :
+                          r.classification === 'located' ? '#8cf' : '#888';
+
+        const geo = r.geo
+            ? `${r.geo.city}, ${r.geo.country} | ${r.geo.isp}`
+            : 'No geolocation';
+        const asn = r.asn ? `ASN: ${r.asn}` : '';
+        const rdns = r.reverse_dns ? `rDNS: ${r.reverse_dns}` : '';
+        const dnsInfo = r.dns_records
+            ? Object.entries(r.dns_records)
+                .filter(([_, v]) => v.length > 0)
+                .map(([k, v]) => `${k}: ${v.join(', ')}`)
+                .join(' | ')
+            : '';
+        const subs = r.subdomains
+            ? `<details><summary class="text-sm text-muted">Subdomains (${r.subdomains.length})</summary><div class="output mt-1" style="max-height:150px;font-size:0.72rem;">${r.subdomains.join('\n')}</div></details>`
+            : '';
+        const whois = r.whois
+            ? `<details><summary class="text-sm text-muted">WHOIS</summary><div class="output mt-1" style="max-height:200px;font-size:0.72rem;">${r.whois.substring(0, 1500)}</div></details>`
+            : '';
+        const notes = r.notes && r.notes.length
+            ? `<div class="text-sm text-danger mt-1">⚠ ${r.notes.join('; ')}</div>`
+            : '';
+
+        return `
+            <div style="background:#0a0a0a;border-left:3px solid ${classColor};padding:0.75rem 1rem;margin:0.5rem 0;border-radius:0 4px 4px 0;">
+                <div class="flex-row" style="justify-content:space-between;">
+                    <div>
+                        <strong style="color:${classColor}">${r.type === 'domain' ? '🌐' : '📡'} ${escapeHtml(r.target)}</strong>
+                        ${r.resolved_ip ? `<span class="text-sm text-muted ml-2">→ ${r.resolved_ip}</span>` : ''}
+                    </div>
+                    <div class="flex-row">
+                        ${threatBadge}
+                        <span class="badge badge-gray" style="font-size:0.65rem;">${r.classification.toUpperCase()}</span>
+                        <span class="text-sm text-muted">${new Date(r.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                </div>
+                <div class="text-sm mt-1">
+                    <div>${escapeHtml(geo)}</div>
+                    ${asn ? `<div class="text-muted">${escapeHtml(asn)}</div>` : ''}
+                    ${rdns ? `<div class="text-muted">${escapeHtml(rdns)}</div>` : ''}
+                    ${dnsInfo ? `<div class="text-muted mt-1"><strong>DNS:</strong> ${escapeHtml(dnsInfo)}</div>` : ''}
+                </div>
+                ${subs}
+                ${whois}
+                ${notes}
+                <div class="flex-row mt-1">
+                    <button onclick="investigateMore('${r.target}')" class="text-sm">🔍 Full Investigation</button>
+                    <button onclick="createCaseFromOsint('${r.target}', '${r.classification}')" class="text-sm">📁 Create Case</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderOsintQueue(queue) {
+    const el = document.getElementById('osintQueueList');
+    if (!queue.length) {
+        el.innerHTML = '<span class="text-muted text-sm">Queue empty</span>';
+        return;
+    }
+    el.innerHTML = queue.map(q => `
+        <div style="padding:0.3rem 0;border-bottom:1px solid #1a1a1a;">
+            <span class="text-sm">${q.type === 'domain' ? '🌐' : '📡'} ${escapeHtml(q.target)}</span>
+            <span class="text-sm text-muted ml-2">from ${escapeHtml(q.source)}</span>
+        </div>
+    `).join('');
+}
+
+function filterOsint(classification) {
+    osintFilter = classification;
+    // Update button states
+    ['All', 'Malicious', 'Suspicious', 'Clean', 'Identified', 'Located', 'Unknown'].forEach(f => {
+        const btn = document.getElementById('osintFilter' + f);
+        if (btn) btn.classList.remove('active-btn');
+    });
+    const suffix = classification.charAt(0).toUpperCase() + classification.slice(1);
+    const activeBtn = document.getElementById('osintFilter' + suffix);
+    if (activeBtn) activeBtn.classList.add('active-btn');
+    fetchOsintResults();
+}
+
+async function toggleOsintEngine() {
+    try {
+        await fetch('/api/osint/auto/toggle', {method: 'POST'});
+        fetchOsintLive();
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+async function clearOsintResults() {
+    if (!confirm('Clear all OSINT results?')) return;
+    try {
+        await fetch('/api/osint/auto/clear', {method: 'POST'});
+        fetchOsintResults();
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+async function manualEnqueue() {
+    const target = document.getElementById('manualOsintTarget').value.trim();
+    if (!target) return;
+    try {
+        const res = await fetch('/api/osint/auto/enqueue', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('manualOsintTarget').value = '';
+            fetchOsintLive();
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+function investigateMore(target) {
+    switchTab('ipintel');
+    document.getElementById('ipTarget').value = target;
+    ipLookup();
+}
+
+function createCaseFromOsint(target, classification) {
+    switchTab('cases');
+    document.getElementById('caseTitle').value = `Investigation: ${target}`;
+    document.getElementById('caseSummary').value = `Auto-OSINT classification: ${classification}\nTarget: ${target}`;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    loadStatus();
+    startLiveMonitor();
+    startTrafficMonitor();
+    startOsintMonitor();
+});
+</script>
+
+<!-- ==================== AMBIENT WATCHER (decorative, all tabs) ==================== -->
+<div class="watcher-scene" aria-hidden="true">
+    <div class="watcher-eye">
+        <div class="watcher-eye-white">
+            <div class="watcher-eye-iris">
+                <div class="watcher-eye-pupil"></div>
+            </div>
+        </div>
+        <div class="watcher-beam"></div>
+    </div>
+    <div class="watcher-pyramid">
+        <div class="watcher-face watcher-face-1"></div>
+        <div class="watcher-face watcher-face-2"></div>
+        <div class="watcher-face watcher-face-3"></div>
+        <div class="watcher-face watcher-face-4"></div>
+    </div>
+</div>
+
+</body>
+</html>
