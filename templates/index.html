@@ -416,20 +416,14 @@
         <div class="card">
             <div class="card-title">Live LAN Monitor</div>
             <div class="flex-row">
-                <button onclick="manualScan()">Scan Now</button>
-                <button onclick="toggleAutoScan()" id="autoScanBtn">Pause Auto-Scan</button>
+                <button onclick="toggleAutoScan()" id="autoScanBtn" class="active-btn">Start Monitoring</button>
                 <input type="number" id="scanInterval" placeholder="Interval (seconds)" min="10" value="30" style="width:140px">
                 <button onclick="updateInterval()">Set Interval</button>
-            </div>
-            <div id="liveStatus" class="mt-1 text-muted text-sm"></div>
-            <div id="liveCount" class="text-sm"></div>
-        </div>
-        <div class="card">
-            <div class="card-title">Network Discovery</div>
-            <div class="flex-row">
                 <button onclick="lanScan()" id="lanScanBtn">Scan LAN (Port Probe)</button>
                 <button onclick="lanArp()" id="lanArpBtn">ARP Scan</button>
             </div>
+            <div id="liveStatus" class="mt-1 text-muted text-sm"></div>
+            <div id="liveCount" class="text-sm"></div>
             <div id="lanStatus" class="mt-1 text-muted text-sm"></div>
             <table id="lanTable" class="hidden mt-2">
                 <thead>
@@ -984,17 +978,30 @@ async function fetchLiveScan() {
         const res = await fetch('/api/lan/live');
         const data = await res.json();
 
+        autoScanEnabled = data.enabled;
+        const btn = document.getElementById('autoScanBtn');
+        btn.textContent = autoScanEnabled ? 'Stop Monitoring' : 'Start Monitoring';
+        btn.className = autoScanEnabled ? '' : 'active-btn';
+
         const statusEl = document.getElementById('liveStatus');
         const countEl = document.getElementById('liveCount');
 
-        if (data.scanning) {
+        if (!data.enabled) {
+            statusEl.innerHTML = '<span class="text-muted">Monitor stopped — click Start Monitoring to begin.</span>';
+        } else if (data.scanning) {
             statusEl.innerHTML = '<span class="loader"></span> Scanning network...';
         } else if (data.last_scan) {
             const ago = Math.round((Date.now() - new Date(data.last_scan).getTime()) / 1000);
             statusEl.innerHTML = `Last scan: ${ago}s ago`;
+        } else {
+            statusEl.innerHTML = '<span class="loader"></span> Waiting for first scan...';
         }
 
         countEl.textContent = data.devices.length ? `${data.devices.length} device(s) online` : '';
+
+        // Also fetch known devices — must run regardless of whether the live
+        // scan has found any devices yet (e.g. right after toggling monitoring on).
+        fetchKnownDevices();
 
         const tbody = document.getElementById('lanBody');
         if (!data.devices.length) {
@@ -1019,9 +1026,6 @@ async function fetchLiveScan() {
             tbody.appendChild(tr);
         });
         document.getElementById('lanTable').classList.remove('hidden');
-
-        // Also fetch known devices
-        fetchKnownDevices();
     } catch (e) {
         document.getElementById('liveStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
     }
@@ -1067,11 +1071,18 @@ async function fetchKnownDevices() {
     } catch (e) {}
 }
 
-function toggleAutoScan() {
-    autoScanEnabled = !autoScanEnabled;
-    const btn = document.getElementById('autoScanBtn');
-    btn.textContent = autoScanEnabled ? 'Pause Auto-Scan' : 'Resume Auto-Scan';
-    btn.className = autoScanEnabled ? '' : 'active-btn';
+async function toggleAutoScan() {
+    try {
+        const res = await fetch('/api/lan/toggle', {method: 'POST'});
+        const data = await res.json();
+        autoScanEnabled = data.enabled;
+        const btn = document.getElementById('autoScanBtn');
+        btn.textContent = autoScanEnabled ? 'Stop Monitoring' : 'Start Monitoring';
+        btn.className = autoScanEnabled ? '' : 'active-btn';
+        if (autoScanEnabled) fetchLiveScan();
+    } catch (e) {
+        alert('Error: ' + e);
+    }
 }
 
 async function updateInterval() {
@@ -1086,16 +1097,6 @@ async function updateInterval() {
         document.getElementById('liveStatus').textContent = `Interval set to ${val}s`;
     } catch (e) {
         alert('Error: ' + e);
-    }
-}
-
-async function manualScan() {
-    document.getElementById('liveStatus').innerHTML = '<span class="loader"></span> Manual scan triggered...';
-    try {
-        await fetch('/api/lan/scan');
-        setTimeout(fetchLiveScan, 2000);
-    } catch (e) {
-        document.getElementById('liveStatus').innerHTML = `<span class="text-danger">Error: ${e}</span>`;
     }
 }
 

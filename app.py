@@ -92,7 +92,7 @@ _failed_logins = {}
 _LOGIN_LOCKOUT_THRESHOLD = 5
 _LOGIN_LOCKOUT_WINDOW = 300  # 5 minutes
 
-_live_lan_state = {"scanning": False, "last_scan": None, "devices": [], "interval": 30}
+_live_lan_state = {"scanning": False, "last_scan": None, "devices": [], "interval": 30, "enabled": False}
 _live_lan_lock = threading.Lock()
 
 _last_errors = {"lan_monitor": None, "traffic_monitor": None, "osint": None}
@@ -748,7 +748,12 @@ def requires_auth(f):
             return Response("Too many failed login attempts. Try again later.", 429)
 
         auth = request.authorization
-        if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
+        if not auth:
+            return Response(
+                "Authentication required", 401,
+                {"WWW-Authenticate": "Basic realm='Command Center'"}
+            )
+        if auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
             attempts.append(now)
             _failed_logins[ip] = attempts
             return Response(
@@ -926,6 +931,9 @@ def _update_live_lan_state(devices):
 def _live_lan_worker():
     logger.info("LAN monitor thread starting")
     while True:
+        if not _live_lan_state["enabled"]:
+            time.sleep(5)
+            continue
         with _live_lan_lock:
             _live_lan_state["scanning"] = True
         try:
@@ -1449,10 +1457,22 @@ def api_lan_scan():
 def api_lan_live():
     with _live_lan_lock:
         return jsonify({
+            "enabled": _live_lan_state["enabled"],
             "scanning": _live_lan_state["scanning"],
             "last_scan": _live_lan_state["last_scan"],
             "devices": _live_lan_state["devices"],
         })
+
+
+@app.route("/api/lan/toggle", methods=["POST"])
+@requires_auth
+def api_lan_toggle():
+    with _live_lan_lock:
+        _live_lan_state["enabled"] = not _live_lan_state["enabled"]
+        enabled = _live_lan_state["enabled"]
+    state = "enabled" if enabled else "disabled"
+    log_activity("Config", "lan_monitor", f"Toggled {state}", "")
+    return jsonify({"ok": True, "enabled": enabled})
 
 
 @app.route("/api/lan/known")
