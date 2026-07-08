@@ -1207,16 +1207,14 @@ def run_nmap(ip, ports=None):
         return {"ok": False, "output": str(e)}
 
 
-def check_sudo():
-    try:
-        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5)
-        return result.returncode == 0
-    except Exception:
-        return False
+try:
+    HAS_SUDO = os.geteuid() == 0 or subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5).returncode == 0
+except Exception:
+    HAS_SUDO = False
 
 
 def run_bettercap(ip, mode="recon"):
-    if not check_sudo():
+    if not HAS_SUDO:
         return {"ok": False, "output": "Passwordless sudo required for bettercap.\nRun: echo 'ALL=(ALL) NOPASSWD: /usr/bin/bettercap' | sudo tee /etc/sudoers.d/bettercap"}
 
     iface = os.getenv("BETTERCAP_IFACE") or default_iface()
@@ -1356,7 +1354,7 @@ def api_status():
         has_opencv = True
     except ImportError:
         pass
-    has_sudo = check_sudo()
+    has_sudo = HAS_SUDO
 
     return jsonify({
         "local_ip": local_ip,
