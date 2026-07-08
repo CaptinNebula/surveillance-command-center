@@ -6,11 +6,15 @@ Network intelligence + OSINT investigation platform.
 
 import os
 import re
+import sys
 import json
 import time
 import socket
 import sqlite3
 import hashlib
+import logging
+import platform
+import shutil
 import threading
 import subprocess
 from datetime import datetime
@@ -24,6 +28,13 @@ from flask import Flask, render_template, jsonify, request, Response, redirect, 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("surveillance_command_center")
 
 # ============================================================================
 # CONFIGURATION
@@ -83,6 +94,8 @@ _LOGIN_LOCKOUT_WINDOW = 300  # 5 minutes
 
 _live_lan_state = {"scanning": False, "last_scan": None, "devices": [], "interval": 30}
 _live_lan_lock = threading.Lock()
+
+_last_errors = {"lan_monitor": None, "traffic_monitor": None, "osint": None}
 
 
 # ============================================================================
@@ -256,6 +269,7 @@ def get_wifi_survey():
 
 def traffic_monitor_loop():
     """Background thread — captures traffic stats every interval."""
+    logger.info("Traffic monitor thread starting")
     prev_io = get_network_io()
 
     while True:
@@ -338,6 +352,8 @@ def traffic_monitor_loop():
             trim_activity_log()
 
         except Exception as e:
+            logger.exception("Traffic monitor cycle failed")
+            _last_errors["traffic_monitor"] = f"{datetime.now().isoformat()}: {e}"
             log_activity("Traffic Monitor", "error", str(e), "")
         finally:
             _traffic_state["scanning"] = False
@@ -564,6 +580,7 @@ def run_osint_investigation(target, target_type):
 
 def osint_worker_loop():
     """Background thread — processes the OSINT queue."""
+    logger.info("OSINT worker thread starting")
     while True:
         if not _osint_state["enabled"] or not _osint_state["queue"]:
             time.sleep(5)
@@ -608,6 +625,8 @@ def osint_worker_loop():
             db.close()
 
         except Exception as e:
+            logger.exception("OSINT investigation of %s failed", target)
+            _last_errors["osint"] = f"{datetime.now().isoformat()}: {e}"
             _osint_state["stats"]["errors"] += 1
             log_activity("Auto-OSINT", target, f"Error: {e}", "")
         finally:
@@ -756,6 +775,9 @@ def get_local_ip():
 
 
 def get_subnet():
+    override = os.getenv("LAN_SUBNET_OVERRIDE")
+    if override:
+        return str(ip_network(override, strict=False))
     local_ip = get_local_ip()
     return str(ip_network(f"{local_ip}/24", strict=False))
 
@@ -902,6 +924,7 @@ def _update_live_lan_state(devices):
 
 
 def _live_lan_worker():
+    logger.info("LAN monitor thread starting")
     while True:
         with _live_lan_lock:
             _live_lan_state["scanning"] = True
@@ -909,6 +932,8 @@ def _live_lan_worker():
             devices = scan_lan()
             _update_live_lan_state(devices)
         except Exception as e:
+            logger.exception("LAN scan cycle failed")
+            _last_errors["lan_monitor"] = f"{datetime.now().isoformat()}: {e}"
             log_activity("LAN Monitor", "error", str(e), "")
             with _live_lan_lock:
                 _live_lan_state["scanning"] = False
@@ -1186,7 +1211,7 @@ def run_bettercap(ip, mode="recon"):
     if not check_sudo():
         return {"ok": False, "output": "Passwordless sudo required for bettercap.\nRun: echo 'ALL=(ALL) NOPASSWD: /usr/bin/bettercap' | sudo tee /etc/sudoers.d/bettercap"}
 
-    iface = default_iface()
+    iface = os.getenv("BETTERCAP_IFACE") or default_iface()
     if not iface:
         return {"ok": False, "output": "Could not determine network interface"}
 
@@ -1340,6 +1365,71 @@ def api_status():
         "tools": {
             "abuseipdb": bool(os.getenv("ABUSEIPDB_KEY")),
             "shodan": bool(os.getenv("SHODAN_KEY")),
+        },
+        "timestamp": datetime.now().isoformat(),
+    })
+
+
+@app.route("/api/debug")
+@requires_auth
+def api_debug():
+    try:
+        import psutil
+        interfaces = {
+            name: [addr.address for addr in addrs if addr.family in (socket.AF_INET, socket.AF_INET6)]
+            for name, addrs in psutil.net_if_addrs().items()
+        }
+    except Exception as e:
+        interfaces = {"error": str(e)}
+
+    tools = {}
+    for tool in ("nmap", "bettercap", "arp-scan", "arp", "ip", "nmcli", "whois", "dig"):
+        tools[tool] = shutil.which(tool) is not None
+
+    return jsonify({
+        "system": {
+            "platform": platform.system(),
+            "platform_release": platform.release(),
+            "python_version": platform.python_version(),
+        },
+        "network": {
+            "local_ip": get_local_ip(),
+            "subnet": get_subnet(),
+            "gateway": get_gateway(),
+            "default_interface": default_iface(),
+            "subnet_override_active": bool(os.getenv("LAN_SUBNET_OVERRIDE")),
+            "bettercap_iface_override_active": bool(os.getenv("BETTERCAP_IFACE")),
+            "all_interfaces": interfaces,
+        },
+        "tools": tools,
+        "threads": {
+            "lan_monitor": {
+                "alive": _live_lan_thread.is_alive(),
+                "state": _live_lan_state,
+                "last_error": _last_errors["lan_monitor"],
+            },
+            "traffic_monitor": {
+                "alive": _traffic_thread.is_alive(),
+                "enabled": _traffic_state["enabled"],
+                "scanning": _traffic_state["scanning"],
+                "interval": _traffic_state["interval"],
+                "snapshot_count": len(_traffic_state["snapshots"]),
+                "last_error": _last_errors["traffic_monitor"],
+            },
+            "osint_engine": {
+                "alive": _osint_thread.is_alive(),
+                "enabled": _osint_state["enabled"],
+                "processing": _osint_state["processing"],
+                "current_target": _osint_state["current_target"],
+                "queue_size": len(_osint_state["queue"]),
+                "results_count": len(_osint_state["results"]),
+                "stats": _osint_state["stats"],
+                "last_error": _last_errors["osint"],
+            },
+        },
+        "api_keys": {
+            "abuseipdb_configured": bool(os.getenv("ABUSEIPDB_KEY")),
+            "shodan_configured": bool(os.getenv("SHODAN_KEY")),
         },
         "timestamp": datetime.now().isoformat(),
     })
@@ -1756,6 +1846,18 @@ def api_cases_create():
     summary = data.get("summary", "")
     case_id = create_case(title, summary)
     return jsonify({"ok": True, "case_id": case_id})
+
+
+@app.route("/api/cases/<int:case_id>/delete", methods=["POST"])
+@requires_auth
+def api_cases_delete(case_id):
+    db = get_db()
+    db.execute("DELETE FROM case_entries WHERE case_id = ?", (case_id,))
+    db.execute("DELETE FROM cases WHERE id = ?", (case_id,))
+    db.commit()
+    db.close()
+    log_activity("Case Deleted", str(case_id), "", "")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/cases/<int:case_id>/entries")

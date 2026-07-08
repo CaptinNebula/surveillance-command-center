@@ -1487,8 +1487,21 @@ async function addEntry() {
 
 async function deleteCase(caseId) {
     if (!confirm('Permanently delete this case?')) return;
-    // Placeholder — implement DELETE endpoint later
-    alert('Delete implemented via SQL directly for now.');
+    try {
+        const res = await fetch(`/api/cases/${caseId}/delete`, {method: 'POST'});
+        const data = await res.json();
+        if (data.ok) {
+            if (currentCaseId === caseId) {
+                currentCaseId = null;
+                document.getElementById('caseDetailCard').classList.add('hidden');
+            }
+            loadCases();
+        } else {
+            alert('Failed: ' + JSON.stringify(data));
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+    }
 }
 
 // ============================================================================
