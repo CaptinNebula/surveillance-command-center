@@ -646,8 +646,10 @@ _osint_thread.start()
 # DATABASE
 # ============================================================================
 def get_db():
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(DB_PATH, timeout=30)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA busy_timeout=30000")
     return db
 
 
@@ -715,13 +717,19 @@ init_db()
 
 
 def log_activity(action, target="", result="", details=""):
-    db = get_db()
-    db.execute(
-        "INSERT INTO activity_log (timestamp, action, target, result, details) VALUES (?, ?, ?, ?, ?)",
-        (datetime.now().isoformat(), action, target, result, details),
-    )
-    db.commit()
-    db.close()
+    try:
+        db = get_db()
+        db.execute(
+            "INSERT INTO activity_log (timestamp, action, target, result, details) VALUES (?, ?, ?, ?, ?)",
+            (datetime.now().isoformat(), action, target, result, details),
+        )
+        db.commit()
+        db.close()
+    except Exception:
+        # Never let a logging failure (e.g. "database is locked") escape and
+        # kill the caller — this is called from inside worker except-blocks,
+        # and an uncaught exception here would silently terminate that thread.
+        logger.exception("log_activity failed for action=%s target=%s", action, target)
 
 
 def trim_activity_log(max_rows=5000):
@@ -745,20 +753,23 @@ def requires_auth(f):
         now = time.time()
         attempts = [t for t in _failed_logins.get(ip, []) if now - t < _LOGIN_LOCKOUT_WINDOW]
         if len(attempts) >= _LOGIN_LOCKOUT_THRESHOLD:
-            return Response("Too many failed login attempts. Try again later.", 429)
+            return Response(
+                json.dumps({"error": "Too many failed login attempts. Try again later."}), 429,
+                {"Content-Type": "application/json"}
+            )
 
         auth = request.authorization
         if not auth:
             return Response(
-                "Authentication required", 401,
-                {"WWW-Authenticate": "Basic realm='Command Center'"}
+                json.dumps({"error": "Authentication required"}), 401,
+                {"WWW-Authenticate": "Basic realm='Command Center'", "Content-Type": "application/json"}
             )
         if auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
             attempts.append(now)
             _failed_logins[ip] = attempts
             return Response(
-                "Authentication required", 401,
-                {"WWW-Authenticate": "Basic realm='Command Center'"}
+                json.dumps({"error": "Authentication required"}), 401,
+                {"WWW-Authenticate": "Basic realm='Command Center'", "Content-Type": "application/json"}
             )
         _failed_logins.pop(ip, None)
         return f(*args, **kwargs)
@@ -1333,6 +1344,19 @@ def add_case_entry(case_id, entry_type, content):
 # ============================================================================
 # FLASK ROUTES
 # ============================================================================
+@app.errorhandler(Exception)
+def handle_exception(e):
+    from werkzeug.exceptions import HTTPException
+    is_http_exc = isinstance(e, HTTPException)
+    code = e.code if is_http_exc else 500
+    if not is_http_exc:
+        logger.exception("Unhandled exception on %s", request.path)
+    if request.path.startswith("/api/"):
+        message = e.description if is_http_exc else "Internal server error"
+        return jsonify({"error": message}), code
+    return e if is_http_exc else (jsonify({"error": "Internal server error"}), 500)
+
+
 @app.route("/")
 @requires_auth
 def index():
@@ -1607,13 +1631,6 @@ def api_diagnose(ip):
 
     mode = request.args.get("mode", "recon")
     confirm = request.args.get("confirm", "no")
-
-    if request.remote_addr not in ("127.0.0.1", "::1"):
-        return jsonify({
-            "ip": ip,
-            "nmap": {"ok": False, "output": "Diagnostics restricted to localhost"},
-            "bettercap": {"ok": False, "output": "Diagnostics restricted to localhost"},
-        })
 
     if mode == "active" and confirm != "yes":
         return jsonify({
@@ -1918,7 +1935,7 @@ if __name__ == "__main__":
         print("  - opencv: True")
     except ImportError:
         print("  - opencv: False")
-    print("  - sudo:", check_sudo())
+    print("  - sudo:", HAS_SUDO)
     print()
     print("  ⚠️  LEGAL: ARP spoofing / MITM is for authorized networks only.")
     print("=" * 60)
